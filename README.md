@@ -100,6 +100,11 @@ On the laptop, with this repository and the requirements installed:
    a minute; find its IP in your router (the command prints its MAC address to
    help) and use **Add camera** in the web app.
 
+The official app can show "connected to your router" and then "setup failed".
+That second message is Kodak's discontinued cloud (`unable to connect to our
+Server`), not the Wi-Fi step. The camera is still on your network and can be
+added here. This app stops before that cloud step on purpose.
+
 `py -m kodaxweb.setup --help` lists options for running it without questions
 (`--ssid`, `--password`, `--timezone`, `--yes`, `--hotspot` if the camera
 network name can't be read, and `--open` for a network with no password).
