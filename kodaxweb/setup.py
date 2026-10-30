@@ -91,7 +91,7 @@ async def _pair(args: argparse.Namespace) -> int:
                 mark = f"FAILED ({step['detail']})"
             print(f"  {step['step']}: {mark}")
 
-    if last.get("ok") and last.get("step") == "Send Wi-Fi details":
+    if last.get("ok") and last.get("step") == "Restart camera":
         print(
             f"\nThe camera is restarting and joining '{ssid}' (about a minute)."
             "\nReconnect this laptop to your home Wi-Fi, then add the camera on the server"

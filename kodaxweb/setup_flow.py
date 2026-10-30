@@ -11,7 +11,9 @@ The local part of pairing; the steps that registered the camera with Kodak's
 3. Timezone is sent with ``set_server_auth`` / ``set_city_timezone``.
 4. The home Wi-Fi details are packed into a fixed-width string,
    AES-CBC encrypted (IV ``cinatic_2018`` NUL-padded) and sent with
-   ``set_nwk_info_v2&setup=<hex>``.  The camera then reboots onto that network.
+   ``set_nwk_info_v2&setup=<hex>``.
+5. ``restart_system``. The camera stores the network but stays on its own
+   hotspot until this; the link usually drops before it answers.
 """
 from __future__ import annotations
 
@@ -181,3 +183,18 @@ async def run_setup(
         if _ok(result):
             break
     yield {"step": "Send Wi-Fi details", "ok": _ok(result), "detail": result}
+    if not _ok(result):
+        return
+
+    # Pairing mode does not end when the network is stored. The official app
+    # sends restart_system next; the camera usually drops the hotspot before
+    # the reply arrives, which is the reboot, not a failure.
+    result = await _send(
+        http, ip, "restart_system", timeout=aiohttp.ClientTimeout(total=12)
+    )
+    rebooting = _ok(result) or result.startswith("error:")
+    yield {
+        "step": "Restart camera",
+        "ok": rebooting,
+        "detail": "left pairing mode" if result.startswith("error:") else result,
+    }
