@@ -707,8 +707,8 @@ function bindSetup() {
     }
     const done = $("#setup-done");
     done.hidden = false;
-    done.innerHTML = last?.ok && last.step === "Send Wi-Fi details"
-      ? `The camera is joining <b>${esc(body.ssid)}</b>. Reconnect this PC to your home Wi-Fi, find the camera's new IP in your router, then use <b>Add camera</b>.`
+    done.innerHTML = last?.finished
+      ? `Setup finished. The camera is restarting onto <b>${esc(body.ssid)}</b>. Losing the KodakCam-… network is normal — wait about a minute, reconnect this PC to your home Wi-Fi, find the camera's new IP in your router, then use <b>Add camera</b>.`
       : "Setup didn't finish. Check the steps above, put the camera back in pairing mode and try again.";
   };
 }

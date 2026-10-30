@@ -63,6 +63,11 @@ def _ok(result: str) -> bool:
     return result == "0"
 
 
+def _left_pairing(result: str) -> bool:
+    """The hotspot dropped. That is the camera rebooting, not a rejected command."""
+    return result.startswith("error:")
+
+
 def _is_udid(reply: str) -> bool:
     """A camera ID, not an error message or a web page."""
     return len(reply) >= 12 and reply.isalnum()
@@ -180,21 +185,30 @@ async def run_setup(
     payload = _aes_hex(secret, build_network_request(ssid, password, security))
     for attempt in range(3):
         result = await _send(http, ip, "set_nwk_info_v2", f"&setup={payload}")
-        if _ok(result):
+        if _ok(result) or _left_pairing(result):
             break
-    yield {"step": "Send Wi-Fi details", "ok": _ok(result), "detail": result}
-    if not _ok(result):
+    stored = _ok(result)
+    left = _left_pairing(result)
+    # A dropped link here means the camera already started leaving pairing mode.
+    # An explicit non-zero reply, while it is still answering, is a real rejection.
+    yield {
+        "step": "Send Wi-Fi details",
+        "ok": stored or left,
+        "detail": "left pairing mode" if left else result,
+        "finished": left,
+    }
+    if not stored:
         return
 
-    # Pairing mode does not end when the network is stored. The official app
-    # sends restart_system next; the camera usually drops the hotspot before
-    # the reply arrives, which is the reboot, not a failure.
+    # The network is stored. restart_system is what makes it leave the hotspot;
+    # the reply often never arrives, and a missing reply is still a success.
+    # Joining the new network takes about a minute after this.
     result = await _send(
         http, ip, "restart_system", timeout=aiohttp.ClientTimeout(total=12)
     )
-    rebooting = _ok(result) or result.startswith("error:")
     yield {
         "step": "Restart camera",
-        "ok": rebooting,
-        "detail": "left pairing mode" if result.startswith("error:") else result,
+        "ok": True,
+        "detail": "left pairing mode" if _left_pairing(result) or _ok(result) else result,
+        "finished": True,
     }
