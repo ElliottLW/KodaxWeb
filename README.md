@@ -62,7 +62,14 @@ smearing until the next full frame.
 ## Setting up a new camera
 
 Only needed for a camera that isn't on your Wi-Fi yet (new, or factory
-reset). Cameras already on your network can be added straight away by IP.
+reset). Cameras already on your network can be added straight away by IP, and
+the app can move a working camera to another Wi-Fi network itself.
+
+A camera in pairing mode only talks to devices on its own Wi-Fi network,
+which a server can't join. So pairing runs on a laptop with Wi-Fi, using the
+setup command below. You don't need the web app running for it.
+
+### 1. Get the setup key (once)
 
 Setup needs the RSA *public* key the camera expects, which this repository
 doesn't include. It ships inside the official Kodak Smart Home Android app:
@@ -71,22 +78,33 @@ doesn't include. It ships inside the official Kodak Smart Home Android app:
    app or `adb pull`).
 2. An `.apk` is a zip file. Open it with any zip tool and copy
    `assets/public.pem` out of it.
-3. Save it as `data/public.pem` (or in your `--data-dir`). The folder is
-   git-ignored.
+3. Save it as `data/public.pem` in your copy of this repository on the
+   laptop. The folder is git-ignored.
 
-Without it, everything else still works; setup stops at its first step and
-says the key is missing.
+### 2. Pair the camera
 
+On the laptop, with this repository and the requirements installed:
 
 1. Put the camera in pairing mode (hold the button until the LED flashes). It
    creates a Wi-Fi network called `KodakCam-…`.
-2. Connect this PC to that network and open **Set up new camera**.
-3. Click **Find camera**, enter your 2.4 GHz Wi-Fi details and send them.
-4. Reconnect the PC to your home network, find the camera's IP in your router
-   and add it.
+2. Connect the laptop to that network.
+3. Run the setup command and answer its questions (your 2.4 GHz Wi-Fi name and
+   password, and time zone):
 
-Only the local pairing steps are needed; the old cloud registration steps are
-skipped.
+   ```bash
+   py -m kodaxweb.setup
+   ```
+
+4. Reconnect the laptop to your home Wi-Fi. The camera joins it within about
+   a minute; find its IP in your router (the command prints its MAC address to
+   help) and use **Add camera** in the web app.
+
+`py -m kodaxweb.setup --help` lists options for running it without questions
+(`--ssid`, `--password`, `--timezone`, `--yes`, and `--open` for a network
+with no password).
+
+If you run the web app on the same laptop, its **Set up new camera** page
+does the same thing in the browser.
 
 ## Files
 
@@ -96,7 +114,8 @@ kodaxweb/            the app
   live.py            live view (video + sound) and pan/tilt motor safety
   camera_api.py      camera HTTP API: status and settings
   vlvl.py            camera stream protocol: session, decryption, ACKs, commands
-  setup_flow.py      first-time Wi-Fi setup of a camera in pairing mode
+  setup.py           setup command: pair a new camera from a laptop
+  setup_flow.py      the pairing steps, shared by the command and the web page
   ptz_limits.py      software end-stops for pan/tilt
   static/            the web page
 data/                yours, git-ignored (created on first run)

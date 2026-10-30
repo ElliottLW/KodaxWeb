@@ -16,13 +16,11 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 import aiohttp
 
-from . import camera_api, setup_flow
+from . import DEFAULT_DATA_DIR, camera_api, setup_flow
 from .live import AUDIO_AVAILABLE, LiveHub
 from .ptz_limits import SoftLimits
 
 STATIC = Path(__file__).resolve().parent / "static"
-# Your files (cameras.json, public.pem): git-ignored, kept out of the code.
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _LOGGER = logging.getLogger("kodaxweb")
 
 

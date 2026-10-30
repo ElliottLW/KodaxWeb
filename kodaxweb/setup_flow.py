@@ -61,6 +61,11 @@ def _ok(result: str) -> bool:
     return result == "0"
 
 
+def _is_udid(reply: str) -> bool:
+    """A camera ID, not an error message or a web page."""
+    return len(reply) >= 12 and reply.isalnum()
+
+
 def _aes_hex(key: bytes, text: str) -> str:
     """Zero-pad to 16, then PKCS5, AES-CBC, hex."""
     data = text.encode()
@@ -102,14 +107,16 @@ def timezone_offset(minutes: int) -> str:
     return f"{sign}{minutes // 60:02d}.{minutes % 60:02d}"
 
 
-async def find_camera(http: aiohttp.ClientSession) -> dict[str, Any] | None:
+async def find_camera(
+    http: aiohttp.ClientSession, ips: tuple[str, ...] = HOTSPOT_IPS
+) -> dict[str, Any] | None:
     """Look for a camera in setup mode on the hotspot addresses."""
     quick = aiohttp.ClientTimeout(total=3)
     udids = await asyncio.gather(
-        *(_send(http, ip, "get_udid", timeout=quick) for ip in HOTSPOT_IPS)
+        *(_send(http, ip, "get_udid", timeout=quick) for ip in ips)
     )
-    for ip, udid in zip(HOTSPOT_IPS, udids):
-        if udid and not udid.startswith(("error", "-1", "<")) and len(udid) >= 12:
+    for ip, udid in zip(ips, udids):
+        if _is_udid(udid):
             return {
                 "ip": ip,
                 "udid": udid,
@@ -143,8 +150,8 @@ async def run_setup(
         return
 
     udid = await _send(http, ip, "get_udid")
-    yield {"step": "Contact camera", "ok": len(udid) >= 12, "detail": udid}
-    if len(udid) < 12:
+    yield {"step": "Contact camera", "ok": _is_udid(udid), "detail": udid}
+    if not _is_udid(udid):
         return
 
     result = await _send(http, ip, "set_flicker", f"&value={flicker}")
