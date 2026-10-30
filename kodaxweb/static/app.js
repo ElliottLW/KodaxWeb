@@ -663,6 +663,8 @@ function bindSetup() {
     try {
       const { camera } = await api("/api/setup/find");
       found = camera;
+      const hotspot = document.querySelector("#setup-form [name=hotspot]");
+      if (camera && camera.hotspot && hotspot && !hotspot.value) hotspot.value = camera.hotspot;
       $("#find-result").innerHTML = camera
         ? `Found camera <b>${esc(camera.mac)}</b> (firmware ${esc(camera.firmware)}) at ${esc(camera.ip)}.`
         : "No camera found. Check this PC is connected to the KodakCam-… network.";
@@ -683,6 +685,7 @@ function bindSetup() {
       password: form.get("password"),
       security: form.get("security"),
       flicker: Number(form.get("flicker")),
+      hotspot_ssid: form.get("hotspot"),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       utc_offset_minutes: -new Date().getTimezoneOffset(),
     };

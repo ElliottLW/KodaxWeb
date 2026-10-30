@@ -272,6 +272,8 @@ async def action(request: web.Request) -> web.Response:
 @api_errors
 async def setup_find(request: web.Request) -> web.Response:
     found = await setup_flow.find_camera(request.app["http"])
+    if found is not None:
+        found = {**found, "hotspot": setup_flow.current_hotspot_ssid()}
     return web.json_response({"camera": found})
 
 
@@ -289,6 +291,7 @@ async def setup_run(request: web.Request) -> web.StreamResponse:
         timezone_name=str(body.get("timezone", "UTC")),
         utc_offset_minutes=int(body.get("utc_offset_minutes", 0)),
         flicker=int(body.get("flicker", 50)),
+        hotspot_ssid=str(body.get("hotspot_ssid") or ""),
     ):
         await resp.write((json.dumps(step) + "\n").encode())
     await resp.write_eof()

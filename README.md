@@ -89,7 +89,8 @@ On the laptop, with this repository and the requirements installed:
    creates a Wi-Fi network called `KodakCam-…`.
 2. Connect the laptop to that network.
 3. Run the setup command and answer its questions (your 2.4 GHz Wi-Fi name and
-   password, and time zone):
+   password, and time zone). It reads the `KodakCam-…` name and sends the same
+   Wi-Fi command the official app would for that hotspot and camera model:
 
    ```bash
    py -m kodaxweb.setup
@@ -100,8 +101,8 @@ On the laptop, with this repository and the requirements installed:
    help) and use **Add camera** in the web app.
 
 `py -m kodaxweb.setup --help` lists options for running it without questions
-(`--ssid`, `--password`, `--timezone`, `--yes`, and `--open` for a network
-with no password).
+(`--ssid`, `--password`, `--timezone`, `--yes`, `--hotspot` if the camera
+network name can't be read, and `--open` for a network with no password).
 
 If you run the web app on the same laptop, its **Set up new camera** page
 does the same thing in the browser.
