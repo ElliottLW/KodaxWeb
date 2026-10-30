@@ -101,11 +101,16 @@ On the laptop, with this repository and the requirements installed:
    help) and use **Add camera** in the web app.
 
 The official app can show "connected to your router" and then "setup failed".
-That second message is Kodak's discontinued cloud. The app does not send a
-reset command on that failure, but it does program the camera with Kodak's
-server addresses first (`url_set`). If the camera then cannot finish that
-handshake it drops back off your Wi-Fi into pairing mode, which looks like a
-reset. This app does not send those server addresses.
+That second message is the camera failing to reach Kodak's servers, not a
+reset command. A new camera already has those addresses in firmware
+(`api-t01-r3.perimetersafe.com` and the matching MQTT, STUN and NTP hosts).
+They no longer resolve. The camera's own setup log then says
+`1_FailToConnServer`, and a few minutes later it leaves your Wi-Fi and goes
+back to pairing mode. Skipping `url_set` does not avoid that: the addresses
+are already stored. Cameras that finished this handshake while the service
+existed stay on the LAN anyway. If a new camera is still on your network
+after the app says setup failed, add it by IP straight away; it can stream
+locally until it gives up and drops off.
 
 `py -m kodaxweb.setup --help` lists options for running it without questions
 (`--ssid`, `--password`, `--timezone`, `--yes`, `--hotspot` if the camera
