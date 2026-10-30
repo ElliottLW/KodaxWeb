@@ -4,17 +4,16 @@ A small local web app that replaces the discontinued Kodak Smart Home app for
 Kodak (Hubble / CIN platform) cameras. It talks to the cameras directly on
 your network; nothing goes to a cloud, and no Kodak account is needed.
 
-Self-contained: this folder is everything the app needs, ready to live in its
-own repository.
-
 ## Run
 
 Needs Python 3.11+.
 
 ```bash
 py -m pip install -r requirements.txt
-py server.py
+py -m kodaxweb
 ```
+
+Run it from this folder (the one with `README.md`).
 
 Then open <http://localhost:8099> and add your camera by its IP address.
 
@@ -22,6 +21,7 @@ Then open <http://localhost:8099> and add your camera by its IP address.
 |--------|---------|--|
 | `--host` | `127.0.0.1` | Use `0.0.0.0` to reach it from other devices — trusted networks only, there's **no login** and it can change camera Wi-Fi settings |
 | `--port` | `8099` | |
+| `--data-dir` | `data/` | Where your camera list and `public.pem` live, e.g. `/var/lib/kodaxweb` on a server |
 | `--debug` | off | Verbose logging |
 
 **Live view needs a secure page.** Browsers only allow the WebCodecs video
@@ -59,11 +59,22 @@ smearing until the next full frame.
 
 ## Setting up a new camera
 
-Setup needs the RSA *public* key the camera expects, which isn't included in
-this repository. It ships inside the official Kodak Smart Home Android app:
-an `.apk` is a zip file, and the key is `assets/public.pem` inside it. Copy
-that file next to `server.py` as `public.pem` (it's git-ignored). Everything
-else in the app works without it.
+Only needed for a camera that isn't on your Wi-Fi yet (new, or factory
+reset). Cameras already on your network can be added straight away by IP.
+
+Setup needs the RSA *public* key the camera expects, which this repository
+doesn't include. It ships inside the official Kodak Smart Home Android app:
+
+1. Get the app's `.apk` from your own phone (for example with an APK export
+   app or `adb pull`).
+2. An `.apk` is a zip file. Open it with any zip tool and copy
+   `assets/public.pem` out of it.
+3. Save it as `data/public.pem` (or in your `--data-dir`). The folder is
+   git-ignored.
+
+Without it, everything else still works; setup stops at its first step and
+says the key is missing.
+
 
 1. Put the camera in pairing mode (hold the button until the LED flashes). It
    creates a Wi-Fi network called `KodakCam-…`.
@@ -77,21 +88,25 @@ skipped.
 
 ## Files
 
-| File | |
-|------|--|
-| `server.py` | aiohttp server: REST API, live-view WebSocket, audio decoding, motor safety |
-| `vlvl.py` | Camera stream protocol (VLVL): session, decryption, ACKs, stream modes, command channel |
-| `kodak.py` | Camera HTTP API: status and settings |
-| `setup_flow.py` | First-time Wi-Fi setup of a camera in pairing mode |
-| `ptz_limits.py` | Software end-stops for pan/tilt |
-| `public.pem` | RSA public key for camera setup — you supply it, git-ignored (see above) |
-| `static/` | The web page |
-| `attic/` | Parked features (pan/tilt presets) |
-| `cameras.json` | Your cameras and saved settings — created at runtime, git-ignored (holds real IPs/MACs) |
+```
+kodaxweb/            the app
+  server.py          web server: REST API and routes
+  live.py            live view (video + sound) and pan/tilt motor safety
+  camera_api.py      camera HTTP API: status and settings
+  vlvl.py            camera stream protocol: session, decryption, ACKs, commands
+  setup_flow.py      first-time Wi-Fi setup of a camera in pairing mode
+  ptz_limits.py      software end-stops for pan/tilt
+  static/            the web page
+data/                yours, git-ignored (created on first run)
+  cameras.json       your cameras and saved settings (real IPs/MACs)
+  public.pem         RSA public key for camera setup (see above)
+docs/                notes on parked features
+```
 
-`vlvl.py` started as a copy of the one in the
+`kodaxweb/vlvl.py` is shared with the
 [KodaxHA](https://github.com/ElliottLW/KodaxHA) Home Assistant integration;
-protocol details are documented in that repo's `CAMERA_API.md`.
+keep the two copies in step. Protocol details are in that repo's
+`CAMERA_API.md`.
 
 ## Notes
 

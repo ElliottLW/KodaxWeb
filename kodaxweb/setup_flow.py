@@ -6,7 +6,7 @@ The local part of pairing; the steps that registered the camera with Kodak's
 1. The PC joins the camera's own Wi-Fi (``KodakCam-...``); the camera answers
    on 192.168.193.1 (or 192.168.0.254 / 192.168.222.1 on some models).
 2. A random AES-128 key is RSA-PKCS1 encrypted with the camera maker's RSA
-   public key (``public.pem``, supplied by the user, see README) and sent
+   public key (``data/public.pem``, supplied by the user, see README) and sent
    with ``set_sec_type``.
 3. Timezone is sent with ``set_server_auth`` / ``set_city_timezone``.
 4. The home Wi-Fi details are packed into a fixed-width string,
@@ -30,7 +30,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 HOTSPOT_IPS = ("192.168.193.1", "192.168.0.254", "192.168.222.1")
 SSID_PREFIXES = ("KodakCam-", "Camera-")
 _IV = b"cinatic_2018".ljust(16, b"\0")
-_PUBLIC_KEY = Path(__file__).with_name("public.pem")
 _TIMEOUT = aiohttp.ClientTimeout(total=8)
 
 
@@ -73,8 +72,8 @@ def _aes_hex(key: bytes, text: str) -> str:
     return (enc.update(data) + enc.finalize()).hex()
 
 
-def _rsa_hex(key: bytes) -> str:
-    public_key = serialization.load_pem_public_key(_PUBLIC_KEY.read_bytes())
+def _rsa_hex(key: bytes, public_key_path: Path) -> str:
+    public_key = serialization.load_pem_public_key(public_key_path.read_bytes())
     return public_key.encrypt(key, rsa_padding.PKCS1v15()).hex()  # type: ignore[union-attr]
 
 
@@ -122,6 +121,7 @@ async def find_camera(http: aiohttp.ClientSession) -> dict[str, Any] | None:
 
 async def run_setup(
     http: aiohttp.ClientSession,
+    public_key: Path,
     ip: str,
     ssid: str,
     password: str,
@@ -131,9 +131,9 @@ async def run_setup(
     flicker: int,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run the pairing steps, yielding a progress record for each."""
-    if not _PUBLIC_KEY.is_file():
+    if not public_key.is_file():
         yield {"step": "validate", "ok": False,
-               "detail": "public.pem is missing; see 'Setting up a new camera' in the README"}
+               "detail": f"{public_key} is missing; see 'Setting up a new camera' in the README"}
         return
     if len(ssid.encode()) > 32 or not ssid:
         yield {"step": "validate", "ok": False, "detail": "SSID must be 1-32 bytes"}
@@ -151,7 +151,7 @@ async def run_setup(
     yield {"step": "Set mains frequency", "ok": _ok(result), "detail": result}
 
     secret = os.urandom(16)
-    result = await _send(http, ip, "set_sec_type", f"&value={_rsa_hex(secret)}")
+    result = await _send(http, ip, "set_sec_type", f"&value={_rsa_hex(secret, public_key)}")
     yield {"step": "Exchange encryption key", "ok": _ok(result), "detail": result}
     if not _ok(result):
         return

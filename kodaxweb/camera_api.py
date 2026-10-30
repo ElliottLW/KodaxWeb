@@ -279,7 +279,7 @@ def ptz_command(action: str, body: dict[str, Any]) -> tuple[str, str]:
     """Build the (command, params) pair for a pan/tilt action.
 
     The preset_* actions have no UI at the moment: they didn't work on the
-    test camera (see attic/ptz_presets.md).
+    test camera (see docs/parked-ptz-presets.md).
     """
     now_ms = int(time.time() * 1000)  # the camera expects a fresh timestamp
     if action == "move":

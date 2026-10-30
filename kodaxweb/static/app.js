@@ -478,7 +478,7 @@ function bindZones() {
 
 const camAction = (body) => api(`/api/cameras/${state.current.id}/action`, { method: "POST", body });
 
-// Presets are parked (see kodax-web/attic/ptz_presets.md); the backend still supports them.
+// Presets are parked (see docs/parked-ptz-presets.md); the backend still supports them.
 
 function showPtz(on) {
   $("#ptz-pad").hidden = !on;

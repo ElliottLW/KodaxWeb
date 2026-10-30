@@ -1,8 +1,5 @@
-# Live config: real camera IPs, MACs and saved settings
-cameras.json
-
-# Supplied by the user for camera setup (see README)
-public.pem
+# Your camera list (real IPs/MACs), saved settings and the setup key
+data/
 
 __pycache__/
 *.pyc
