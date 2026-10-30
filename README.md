@@ -4,6 +4,8 @@ A small local web app that replaces the discontinued Kodak Smart Home app for
 Kodak (Hubble / CIN platform) cameras. It talks to the cameras directly on
 your network; nothing goes to a cloud, and no Kodak account is needed.
 
+![KodaxWeb camera page, with live view, status, picture, detection and lullaby controls](docs/screenshot.png)
+
 ## Run
 
 Needs Python 3.11+.
