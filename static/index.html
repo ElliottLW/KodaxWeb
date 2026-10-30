@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KodaxWeb</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">Kodax<span>Web</span></div>
+    <nav id="camera-list" class="camera-list" aria-label="Cameras"></nav>
+    <button class="btn ghost" id="btn-add">+ Add camera</button>
+    <button class="btn ghost" id="btn-setup">Set up new camera</button>
+  </aside>
+
+  <main id="main">
+    <section id="view-empty" class="view">
+      <div class="empty">
+        <h1>No camera selected</h1>
+        <p>Add a camera that's already on your network by its IP address, or set up a new one.</p>
+      </div>
+    </section>
+
+    <!-- ── camera view ───────────────────────────────────────────── -->
+    <section id="view-camera" class="view" hidden>
+      <header class="cam-header">
+        <div>
+          <h1 id="cam-name" class="editable" title="Click to rename" tabindex="0"></h1>
+          <div class="muted" id="cam-sub"></div>
+        </div>
+        <div class="row">
+          <button class="btn" id="btn-refresh">Refresh</button>
+          <button class="btn ghost danger" id="btn-remove">Remove</button>
+        </div>
+      </header>
+
+      <div class="grid-top">
+        <div class="card live-card">
+          <div class="live-wrap" id="live-wrap">
+            <canvas id="live" width="1280" height="720"></canvas>
+            <button id="btn-play" class="play-overlay" aria-label="Start live view">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+              <span>Start live view</span>
+            </button>
+            <div id="live-msg" class="live-msg" hidden></div>
+
+            <!-- pan/tilt arrows: shown by the toolbar button, hidden by the centre button -->
+            <div id="ptz-pad" class="ptz-pad" hidden>
+              <button class="ptz-arrow up" data-move="up" aria-label="Tilt up"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+              <button class="ptz-arrow down" data-move="down" aria-label="Tilt down"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+              <button class="ptz-arrow left" data-move="left" aria-label="Pan left"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+              <button class="ptz-arrow right" data-move="right" aria-label="Pan right"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+              <button class="ptz-center" id="btn-ptz-close" aria-label="Hide pan and tilt controls" title="Hide controls">
+                <svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+              <div class="ptz-warning" id="ptz-uncalibrated" hidden>
+                Not calibrated: the camera doesn't know where its limits are, so it can grind at the ends.
+                <button class="btn" id="btn-calibrate-pad">Calibrate now</button>
+              </div>
+            </div>
+
+            <div class="live-toolbar" id="live-toolbar" hidden>
+              <button class="tb-btn" id="btn-stop" aria-label="Stop live view" title="Stop live view">
+                <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none"/></svg></button>
+              <span class="tb-stat" id="live-stats"></span>
+              <span class="spacer"></span>
+              <button class="tb-btn tb-label" id="btn-night" title="Night vision: click to change">
+                <svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+                <span id="night-label">Auto</span></button>
+              <button class="tb-btn" id="btn-ptz" aria-pressed="false" aria-label="Pan and tilt" title="Pan and tilt" hidden>
+                <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button>
+              <button class="tb-btn" id="btn-audio" aria-pressed="false" aria-label="Turn sound on" title="Sound">
+                <svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/>
+                  <g class="waves"><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a7.5 7.5 0 0 1 0 11"/></g>
+                  <g class="mute"><path d="M16 9l5 6M21 9l-5 6"/></g></svg></button>
+              <button class="tb-btn" id="btn-snap" aria-label="Save snapshot" title="Save snapshot">
+                <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+              <button class="tb-btn" id="btn-full" aria-label="Full screen" title="Full screen">
+                <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+            </div>
+            <div id="zone-grid" class="zone-grid" hidden></div>
+          </div>
+          <div class="row zone-controls" id="zone-controls" hidden>
+            <span class="muted small">Drag to paint. Highlighted cells trigger motion alerts.</span>
+            <span class="spacer"></span>
+            <button class="btn" data-zone="all">All</button>
+            <button class="btn" data-zone="none">None</button>
+            <button class="btn" data-zone="cancel">Cancel</button>
+            <button class="btn primary" data-zone="save">Save zones</button>
+          </div>
+        </div>
+
+        <div class="tiles" id="tiles"></div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <h2>Picture</h2>
+          <label class="field"><span>Resolution</span>
+            <select data-key="resolution"><option value="720">720p (1280×720)</option><option value="480">480p</option></select></label>
+          <label class="field"><span>Video quality (bitrate)</span>
+            <select data-key="video_bitrate">
+              <option value="400">400 kbps · low</option>
+              <option value="550">550 kbps · recommended</option>
+              <option value="700">700 kbps · some smearing</option>
+              <option value="1000">1000 kbps · more smearing</option>
+              <option value="1200">1200 kbps · frequent smearing</option>
+            </select></label>
+          <p class="muted small">Above 550 kbps the camera skips more frames, which shows as smearing until the next full frame.</p>
+          <label class="field"><span>Mains frequency (anti-flicker)</span>
+            <select data-key="flicker"><option value="50">50 Hz (UK/EU)</option><option value="60">60 Hz (US)</option></select></label>
+          <label class="field"><span>Image profile</span>
+            <select data-key="image_profile"><option value="0">Profile 0</option><option value="1">Profile 1</option><option value="2">Profile 2</option></select></label>
+          <label class="toggle"><input type="checkbox" data-key="ceiling_mount"><span>Ceiling mount (flip image 180°)</span></label>
+        </div>
+
+        <div class="card">
+          <h2>Detection &amp; recording</h2>
+          <div class="pair">
+            <label class="toggle"><input type="checkbox" data-key="motion_enabled"><span>Motion</span></label>
+            <select data-key="motion_sensitivity" aria-label="Motion sensitivity"><option value="1">Low</option><option value="3">Medium</option><option value="5">High</option></select>
+          </div>
+          <div class="pair">
+            <label class="toggle"><input type="checkbox" data-key="sound_enabled"><span>Sound</span></label>
+            <select data-key="sound_sensitivity" aria-label="Sound sensitivity"><option value="1">Low</option><option value="3">Medium</option><option value="5">High</option></select>
+          </div>
+          <button class="btn" id="btn-zones" title="Choose which parts of the picture can trigger motion alerts">Edit motion zones</button>
+
+          <h3 class="subhead">On motion, save to SD card</h3>
+          <label class="toggle"><input type="checkbox" data-key="store_motion_clips"><span>Video clips</span></label>
+          <label class="toggle"><input type="checkbox" data-key="store_motion_snapshots"><span>Snapshots</span></label>
+          <div class="pair">
+            <label class="toggle"><input type="checkbox" data-key="auto_remove_clips"><span>Keep only the latest</span></label>
+            <span class="inline-num"><input type="number" min="1" max="100" data-key="clips_to_keep" aria-label="Clips to keep"> clips</span>
+          </div>
+          <p class="muted small" id="sd-info"></p>
+        </div>
+
+        <div class="card">
+          <h2>Lullaby &amp; sounds</h2>
+          <label class="field"><span>Volume</span>
+            <input type="range" min="0" max="5" step="1" data-key="melody_volume"></label>
+          <div class="row wrap">
+            <button class="btn" data-melody="1">Track 1</button><button class="btn" data-melody="2">Track 2</button>
+            <button class="btn" data-melody="3">Track 3</button><button class="btn" data-melody="4">Track 4</button>
+            <button class="btn" data-melody="5">Track 5</button><button class="btn" data-melody="stop">Stop</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Wi-Fi</h2>
+          <dl class="kv" id="wifi-info"></dl>
+          <button class="btn" id="btn-wifi-change">Change network…</button>
+          <form id="wifi-form" class="stack" hidden>
+            <label class="field"><span>New network name (SSID)</span><input name="ssid" required maxlength="32" autocomplete="off"></label>
+            <label class="field"><span>Password</span><input name="password" type="password" required minlength="8" maxlength="63" autocomplete="new-password"></label>
+            <p class="muted small">The camera drops off its current network straight away. If the details are wrong it won't come back and you'll need to set it up again from pairing mode.</p>
+            <div class="row"><button class="btn" type="button" id="btn-wifi-cancel">Cancel</button><button class="btn primary" type="submit">Move camera</button></div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Misc</h2>
+          <label class="toggle"><input type="checkbox" data-key="blue_led"><span>Blue indicator light</span></label>
+          <label class="field"><span>Time zone (on-screen clock)</span>
+            <select id="tz-select"></select></label>
+          <div id="ptz-misc" hidden>
+            <button class="btn" id="btn-calibrate">Recalibrate pan &amp; tilt</button>
+            <p class="muted small">Sweeps the full range and re-centres. Use if movement drifts.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Device</h2>
+          <dl class="kv" id="device-info"></dl>
+          <div class="row wrap">
+            <button class="btn" id="btn-log">View setup log</button>
+            <button class="btn danger" id="btn-restart">Restart camera</button>
+          </div>
+          <pre id="setup-log" class="log" hidden></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── setup wizard ──────────────────────────────────────────── -->
+    <section id="view-setup" class="view" hidden>
+      <header class="cam-header"><div><h1>Set up a new camera</h1>
+        <div class="muted">Connects a camera in pairing mode to your Wi-Fi, without the Kodak cloud.</div></div></header>
+      <div class="cards narrow">
+        <div class="card">
+          <h2>1. Put the camera in pairing mode</h2>
+          <p>Power the camera on and hold the pairing/reset button until the LED flashes. It then broadcasts its own Wi-Fi network called <b>KodakCam-…</b></p>
+          <h2 class="mt">2. Connect this PC to that network</h2>
+          <p>Join <b>KodakCam-…</b> from Windows' Wi-Fi menu. Keep this page open; it's served from this PC so it keeps working.</p>
+          <button class="btn primary" id="btn-find">Find camera</button>
+          <p id="find-result" class="muted"></p>
+        </div>
+        <div class="card" id="setup-form-card" hidden>
+          <h2>3. Your home Wi-Fi</h2>
+          <form id="setup-form" class="stack">
+            <label class="field"><span>Network name (SSID, 2.4 GHz)</span><input name="ssid" required maxlength="32" autocomplete="off"></label>
+            <label class="field"><span>Security</span>
+              <select name="security"><option value="WPA2">WPA/WPA2</option><option value="OPEN">Open (no password)</option></select></label>
+            <label class="field"><span>Password</span><input name="password" type="password" maxlength="63" autocomplete="new-password"></label>
+            <label class="field"><span>Mains frequency</span>
+              <select name="flicker"><option value="50">50 Hz (UK/EU)</option><option value="60">60 Hz (US)</option></select></label>
+            <button class="btn primary" type="submit">Send to camera</button>
+          </form>
+          <ol id="setup-steps" class="steps"></ol>
+          <p id="setup-done" class="muted" hidden></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg-add">
+  <form method="dialog" id="add-form" class="stack">
+    <h2>Add camera</h2>
+    <label class="field"><span>IP address</span><input name="ip" required placeholder="192.168.1.50"></label>
+    <label class="field"><span>Name</span><input name="name" placeholder="Garage"></label>
+    <p class="muted small" id="add-error"></p>
+    <div class="row"><span class="spacer"></span><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Add</button></div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
