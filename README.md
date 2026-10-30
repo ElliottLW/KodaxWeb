@@ -100,6 +100,13 @@ protocol details are documented in that repo's `CAMERA_API.md`.
 - The camera skips roughly 1 frame in 25 even on a good link, so expect an
   occasional tiny hitch. Nothing is lost in the app.
 
+## Licence
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md): free to use, modify and share for
+any non-commercial purpose; selling it or using it commercially isn't permitted.
+It comes as is, with no warranty. The licence covers only this project's own
+code and docs; see [NOTICE](NOTICE).
+
 ## Disclaimer
 
 KodaxWeb is an independent project. It is not affiliated with, endorsed by or
