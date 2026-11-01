@@ -74,17 +74,88 @@ def _ensure_cert(directory: Path) -> tuple[Path, Path]:
     return cert_path, key_path
 
 
-def _packet_id(data: bytes) -> bytes | None:
-    """Packet id for a short MQTT packet whose remaining length fits in one byte."""
-    if len(data) < 4 or data[1] >= 0x80:
+def _remaining_length(data: bytes) -> tuple[int, int] | None:
+    """Return an MQTT packet's remaining length and encoded field width."""
+    if len(data) < 2:
         return None
-    return data[2:4]
+    value = 0
+    multiplier = 1
+    for index in range(1, min(len(data), 5)):
+        digit = data[index]
+        value += (digit & 0x7F) * multiplier
+        if digit < 0x80:
+            return value, index
+        multiplier *= 128
+    if len(data) >= 5:
+        raise ValueError("invalid MQTT remaining length")
+    return None
+
+
+def _packet_size(data: bytes) -> int | None:
+    decoded = _remaining_length(data)
+    if decoded is None:
+        return None
+    remaining_length, width = decoded
+    return 1 + width + remaining_length
+
+
+def _encode_remaining_length(value: int) -> bytes:
+    encoded = bytearray()
+    while True:
+        digit = value % 128
+        value //= 128
+        if value:
+            digit |= 0x80
+        encoded.append(digit)
+        if not value:
+            return bytes(encoded)
+
+
+def _packet_id(data: bytes) -> bytes | None:
+    try:
+        packet_size = _packet_size(data)
+        decoded = _remaining_length(data)
+    except ValueError:
+        return None
+    if packet_size is None or decoded is None or len(data) != packet_size:
+        return None
+    remaining_length, width = decoded
+    offset = 1 + width
+    if remaining_length < 2:
+        return None
+    return data[offset:offset + 2]
+
+
+def _subscription_count(data: bytes, offset: int) -> int | None:
+    count = 0
+    while offset < len(data):
+        if offset + 2 > len(data):
+            return None
+        topic_length = int.from_bytes(data[offset:offset + 2], "big")
+        offset += 2
+        if topic_length == 0 or offset + topic_length + 1 > len(data):
+            return None
+        offset += topic_length
+        if data[offset] > 2:
+            return None
+        offset += 1
+        count += 1
+    return count or None
 
 
 def _reply(data: bytes) -> bytes | None:
     """Answer MQTT session packets. Do not log or return the body."""
     if not data:
         return None
+    try:
+        packet_size = _packet_size(data)
+        decoded = _remaining_length(data)
+    except ValueError:
+        return None
+    if packet_size is None or decoded is None or len(data) != packet_size:
+        return None
+    remaining_length, width = decoded
+    offset = 1 + width
     kind = data[0] & 0xF0
     if kind == 0x10:
         return _CONNACK
@@ -92,19 +163,33 @@ def _reply(data: bytes) -> bytes | None:
         return _PINGRESP
     if kind == 0x80:
         packet_id = _packet_id(data)
-        if packet_id is None:
+        if packet_id is None or remaining_length < 2:
             return None
-        return bytes((0x90, 0x03)) + packet_id + bytes((0x00,))
+        count = _subscription_count(data, offset + 2)
+        if count is None:
+            return None
+        suback_length = 2 + count
+        return (
+            bytes((0x90,))
+            + _encode_remaining_length(suback_length)
+            + packet_id
+            + bytes(count)
+        )
     if kind == 0x30 and data[0] & 0x06:
-        if len(data) < 6 or data[1] >= 0x80:
+        qos = (data[0] >> 1) & 0x03
+        if qos == 3 or remaining_length < 2:
             return None
-        topic_len = int.from_bytes(data[2:4], "big")
-        at = 4 + topic_len
-        if len(data) < at + 2:
+        topic_len = int.from_bytes(data[offset:offset + 2], "big")
+        packet_id_offset = offset + 2 + topic_len
+        if topic_len == 0 or packet_id_offset + 2 > len(data):
             return None
-        packet_id = data[at:at + 2]
-        ack = 0x40 if (data[0] & 0x06) == 0x02 else 0x50
+        packet_id = data[packet_id_offset:packet_id_offset + 2]
+        ack = 0x40 if qos == 1 else 0x50
         return bytes((ack, 0x02)) + packet_id
+    if kind == 0x60 and data[0] & 0x0F == 0x02 and remaining_length == 2:
+        packet_id = _packet_id(data)
+        if packet_id is not None:
+            return bytes((0x70, 0x02)) + packet_id
     return None
 
 
@@ -114,16 +199,33 @@ async def _session(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -
     cipher = ssl_object.cipher() if ssl_object is not None else None
     _LOGGER.info("tls accepted from %s cipher=%s", peer, cipher)
     try:
+        buffer = bytearray()
         while True:
             data = await reader.read(512)
             if not data:
                 _LOGGER.info("cloud check %s closed", peer)
                 break
-            _LOGGER.info("cloud check %s sent %d bytes type=0x%02x", peer, len(data), data[0])
-            reply = _reply(data)
-            if reply is not None:
-                writer.write(reply)
-                await writer.drain()
+            buffer.extend(data)
+            while buffer:
+                try:
+                    packet_size = _packet_size(buffer)
+                except ValueError:
+                    _LOGGER.info("cloud check %s sent an invalid MQTT packet", peer)
+                    return
+                if packet_size is None or len(buffer) < packet_size:
+                    break
+                packet = bytes(buffer[:packet_size])
+                del buffer[:packet_size]
+                _LOGGER.info(
+                    "cloud check %s sent %d bytes type=0x%02x",
+                    peer,
+                    len(packet),
+                    packet[0],
+                )
+                reply = _reply(packet)
+                if reply is not None:
+                    writer.write(reply)
+                    await writer.drain()
     except (ConnectionError, TimeoutError, ssl.SSLError) as err:
         _LOGGER.info("cloud check %s ended: %s", peer, type(err).__name__)
     finally:
