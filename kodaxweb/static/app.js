@@ -53,6 +53,8 @@ async function selectCamera(id) {
   if (!state.current) return;
   $$("#camera-list button").forEach((b) => b.setAttribute("aria-current", b.dataset.id === id));
   $("#cam-name").textContent = state.current.name;
+  $("#rename-form").hidden = true;
+  $("#cam-name").hidden = $("#btn-rename").hidden = false;
   $("#cam-sub").textContent = `${state.current.ip} · ${state.current.mac}`;
   $("#setup-log").hidden = true;
   show("view-camera");
@@ -565,11 +567,39 @@ function bindActions() {
   $("#btn-zones").onclick = openZones;
   $("#btn-refresh").onclick = refreshStatus;
 
-  $("#cam-name").onclick = async () => {
-    const name = prompt("Camera name", state.current.name);
-    if (!name) return;
-    await api(`/api/cameras/${state.current.id}`, { method: "PATCH", body: { name } });
-    loadCameras(state.current.id);
+  // Rename in place: the name lives in this app (the camera has no name of
+  // its own), and live view keeps running while you edit.
+  const showRename = (on) => {
+    $("#rename-form").hidden = !on;
+    $("#cam-name").hidden = on;
+    $("#btn-rename").hidden = on;
+    if (on) {
+      $("#rename-input").value = state.current.name;
+      $("#rename-input").select();
+      $("#rename-input").focus();
+    }
+  };
+  $("#cam-name").onclick = () => showRename(true);
+  $("#cam-name").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showRename(true); } };
+  $("#btn-rename").onclick = () => showRename(true);
+  $("#btn-rename-cancel").onclick = () => showRename(false);
+  $("#rename-input").onkeydown = (e) => { if (e.key === "Escape") showRename(false); };
+  $("#rename-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const cam = state.current;
+    const name = $("#rename-input").value.trim();
+    if (!name || name === cam.name) return showRename(false);
+    try {
+      const saved = await api(`/api/cameras/${cam.id}`, { method: "PATCH", body: { name } });
+      cam.name = saved.name;
+      const item = $(`#camera-list button[data-id="${cam.id}"] span`);
+      if (item) item.textContent = cam.name;
+      if (state.current === cam) $("#cam-name").textContent = cam.name;
+      showRename(false);
+      toast("Renamed");
+    } catch (err) {
+      toast(err.message, true);
+    }
   };
   $("#btn-remove").onclick = async () => {
     if (!confirm(`Remove ${state.current.name} from this app? The camera itself isn't changed.`)) return;

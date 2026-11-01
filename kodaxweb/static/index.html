@@ -27,10 +27,16 @@
     <section id="view-camera" class="view" hidden>
       <header class="cam-header">
         <div>
-          <h1 id="cam-name" class="editable" title="Click to rename" tabindex="0"></h1>
+          <h1 id="cam-name" class="editable" title="Click to rename" tabindex="0" role="button"></h1>
+          <form id="rename-form" class="rename-form" hidden>
+            <input id="rename-input" maxlength="60" aria-label="Camera name" autocomplete="off" required>
+            <button class="btn primary" type="submit">Save</button>
+            <button class="btn ghost" type="button" id="btn-rename-cancel">Cancel</button>
+          </form>
           <div class="muted" id="cam-sub"></div>
         </div>
         <div class="row">
+          <button class="btn" id="btn-rename">Rename</button>
           <button class="btn" id="btn-refresh">Refresh</button>
           <button class="btn ghost danger" id="btn-remove">Remove</button>
         </div>

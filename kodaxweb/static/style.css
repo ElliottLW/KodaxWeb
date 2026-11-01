@@ -53,6 +53,8 @@ main { padding: 24px; min-width: 0; }
 .cam-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
 .editable { cursor: text; border-radius: 6px; }
 .editable:hover { background: var(--panel); }
+.rename-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rename-form input { font-size: 18px; font-weight: 600; width: min(320px, 60vw); }
 
 .row { display: flex; align-items: center; gap: 8px; }
 .row.wrap { flex-wrap: wrap; }

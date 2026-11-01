@@ -149,7 +149,10 @@ async def update_camera(request: web.Request) -> web.Response:
     body = await request.json()
     cam = request.app["cameras"][cam_id]
     if "name" in body:
-        cam["name"] = str(body["name"])[:60]
+        name = str(body["name"]).strip()[:60]
+        if not name:
+            raise ValueError("name can't be empty")
+        cam["name"] = name
     if "ip" in body:
         cam["ip"] = str(body["ip"]).strip()
         request.app["hubs"].pop(cam_id, None)
