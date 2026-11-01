@@ -54,6 +54,23 @@ _IV = b"cinatic_2018".ljust(16, b"\0")
 _TIMEOUT = aiohttp.ClientTimeout(total=8)
 
 
+def _command_reply(body: str, cmd: str) -> str | None:
+    """The payload after ``cmd:``, if this body is a command reply."""
+    prefix = f"{cmd}:"
+    text = body.strip()
+    if text.startswith(prefix):
+        return text[len(prefix):].strip()
+    return None
+
+
+def _accepted_reply(body: str, cmd: str) -> bool:
+    """True when the camera's reply shows it accepted this command."""
+    reply = _command_reply(body, cmd)
+    if reply is None:
+        return body.strip() == "0"
+    return reply == "0"
+
+
 async def _send(
     http: aiohttp.ClientSession,
     ip: str,
@@ -61,20 +78,36 @@ async def _send(
     params: str = "",
     timeout: aiohttp.ClientTimeout = _TIMEOUT,
 ) -> str:
-    """Send a setup-mode command, falling back to the older URL form."""
+    """Send a setup-mode command, falling back to the older URL form.
+
+    A connect failure or timeout is ``error: ...``. That is not evidence the
+    camera accepted the command: the same prefix is used when the socket never
+    opened. A ``0`` reply is kept even if the hotspot then drops, including
+    when closing the response raises or the fallback URL can no longer connect.
+    """
     last = ""
+    accepted = False
     for url in (
         f"http://{ip}/?req={cmd}{params}",
         f"http://{ip}/?action=command&command={cmd}{params}",
     ):
+        body = ""
         try:
             async with http.get(url, timeout=timeout) as resp:
-                last = (await resp.text(errors="replace")).strip()
+                body = (await resp.text(errors="replace")).strip()
         except (aiohttp.ClientError, TimeoutError) as err:
+            if _accepted_reply(body, cmd) or accepted:
+                return "0"
             last = f"error: {err}"
             continue
-        if last.startswith(f"{cmd}:"):
-            return last[len(cmd) + 1:].strip()
+        if _accepted_reply(body, cmd):
+            accepted = True
+        reply = _command_reply(body, cmd)
+        if reply is not None:
+            return reply
+        last = body
+    if _accepted_reply(last, cmd):
+        return "0"
     return last
 
 
@@ -83,7 +116,7 @@ def _ok(result: str) -> bool:
 
 
 def _left_pairing(result: str) -> bool:
-    """The hotspot dropped. That is the camera rebooting, not a rejected command."""
+    """No reply arrived. Not proof the camera accepted the command."""
     return result.startswith("error:")
 
 
@@ -316,20 +349,24 @@ async def run_setup(
     encoded = build_network_request(ssid, password, security, utf8=utf8)
     payload = _aes_hex(secret, encoded) if encrypt else encoded
     timeout = aiohttp.ClientTimeout(total=10 if encrypt else 5)
+    # error: is a connect failure or timeout, including before the details were
+    # delivered. Keep retrying those. A dropped link is completion only once a
+    # reply shows the camera accepted the details.
+    accepted = False
     for attempt in range(10):
         result = await _send(http, ip, command, f"&setup={payload}", timeout=timeout)
         if _ok(result):
+            accepted = True
             break
         await asyncio.sleep(2)
-    stored = _ok(result)
     chosen = f"{command} (hotspot {hotspot}, model {model_code(udid) or '?'})"
     yield {
         "step": "Send Wi-Fi details",
-        "ok": stored,
-        "detail": chosen if stored else f"{chosen}: {result}",
+        "ok": accepted,
+        "detail": chosen if accepted else f"{chosen}: {result}",
         "finished": False,
     }
-    if not stored:
+    if not accepted:
         return
 
     # The network is stored. restart_system is what makes it leave the hotspot;
