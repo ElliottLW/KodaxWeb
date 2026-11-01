@@ -112,6 +112,23 @@ existed stay on the LAN anyway. If a new camera is still on your network
 after the app says setup failed, add it by IP straight away; it can stream
 locally until it gives up and drops off.
 
+Point `mqtt-t01-r1.perimetersafe.com`, `mqtt-t01-r2.perimetersafe.com`, and
+`mqtt-t01-r3.perimetersafe.com` at the machine running KodaxWeb (a UniFi
+local DNS record, Pi-hole, or AdGuard rewrite). Then start the app with
+`--cloud-sink`. It accepts TCP 8894 and nothing else: no MQTT broker, and
+no forged PerimeterSafe certificate. The camera's TLS handshake still
+fails, which is what stops the click/flash reset. It does not bring the
+Kodak cloud app back. Do not port-forward 8894.
+
+```bash
+py -m kodaxweb --cloud-sink
+```
+
+`--cloud-sink-host` defaults to `0.0.0.0` and `--cloud-sink-port` to `8894`.
+Leave the flag off on a laptop. Reboot the camera once so it drops a cached
+lookup. If the camera uses a public resolver (8.8.8.8) instead of your
+router, the local DNS record will not be seen.
+
 `py -m kodaxweb.setup --help` lists options for running it without questions
 (`--ssid`, `--password`, `--timezone`, `--yes`, `--hotspot` if the camera
 network name can't be read, and `--open` for a network with no password).
@@ -130,6 +147,7 @@ kodaxweb/            the app
   setup.py           setup command: pair a new camera from a laptop
   setup_flow.py      the pairing steps, shared by the command and the web page
   ptz_limits.py      software end-stops for pan/tilt
+  cloud_sink.py      TCP accept for the dead cloud check (port 8894)
   static/            the web page
 data/                yours, git-ignored (created on first run)
   cameras.json       your cameras and saved settings (real IPs/MACs)
