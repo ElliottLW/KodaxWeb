@@ -115,11 +115,14 @@ locally until it gives up and drops off.
 Point `mqtt-t01-r1.perimetersafe.com`, `mqtt-t01-r2.perimetersafe.com`, and
 `mqtt-t01-r3.perimetersafe.com` at the machine running KodaxWeb (a UniFi
 local DNS record, Pi-hole, or AdGuard rewrite). Then start the app with
-`--cloud-sink`. That is the whole fix: do not install Mosquitto or another
-broker beside it. The app accepts TCP 8894 and resets the connection, which
-is what a stock MQTT broker does when the camera speaks TLS instead of
-MQTT. There is no forged PerimeterSafe certificate. It does not bring the
-Kodak cloud app back. Do not port-forward 8894.
+`--cloud-sink`. Do not install Mosquitto beside it. The app accepts TCP
+8894 and completes TLS with a certificate it generates in the data
+directory (`cloud-sink.pem` / `cloud-sink.key`). That certificate is ours,
+not PerimeterSafe's. The public certificate is
+[`docs/cloud-sink.pem`](docs/cloud-sink.pem). The private key stays in
+the git-ignored data directory and is not in this repository. Older firmware clicks on a rejected handshake; if it pins
+Kodak's certificate, this still fails. It does not bring the Kodak cloud
+app back. Do not port-forward 8894.
 
 ```bash
 py -m kodaxweb --cloud-sink
@@ -148,7 +151,7 @@ kodaxweb/            the app
   setup.py           setup command: pair a new camera from a laptop
   setup_flow.py      the pairing steps, shared by the command and the web page
   ptz_limits.py      software end-stops for pan/tilt
-  cloud_sink.py      TCP accept for the dead cloud check (port 8894)
+  cloud_sink.py      local TLS accept for the dead cloud check (port 8894)
   static/            the web page
 data/                yours, git-ignored (created on first run)
   cameras.json       your cameras and saved settings (real IPs/MACs)

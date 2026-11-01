@@ -385,5 +385,8 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
-    sink = CloudSink(args.cloud_sink_host, args.cloud_sink_port) if args.cloud_sink else None
+    sink = (
+        CloudSink(args.cloud_sink_host, args.cloud_sink_port, args.data_dir.resolve())
+        if args.cloud_sink else None
+    )
     web.run_app(make_app(args.data_dir.resolve(), cloud_sink=sink), host=args.host, port=args.port)
