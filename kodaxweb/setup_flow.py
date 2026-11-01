@@ -8,10 +8,15 @@ The local part of pairing; the steps that registered the camera with Kodak's
 2. A random AES-128 key is RSA-PKCS1 encrypted with the camera maker's RSA
    public key (``data/public.pem``, supplied by the user, see README) and sent
    with ``set_sec_type``.
-3. Timezone is sent with ``set_server_auth`` / ``set_city_timezone``.
-4. The home Wi-Fi details are packed into a fixed-width string,
-   AES-CBC encrypted (IV ``cinatic_2018`` NUL-padded) and sent with
-   ``set_nwk_info_v2&setup=<hex>``.
+3. Timezone is sent with ``set_server_auth`` (or ``set_reg_token`` on the
+   encrypted hotspots) and ``set_city_timezone``.
+4. The home Wi-Fi details are packed into a fixed-width string. Which command
+   carries it depends on the hotspot name and the camera model, the same
+   choice the official app makes. A plain ``KodakCam-…`` name gets
+   ``setup_wireless_save``. Only ``KodakCam-C`` / ``KodakCam-F`` (and the
+   Alecto / Camera-VA equivalents) get the AES form, and only Cherish and
+   Frontier cameras on firmware 03.03.18 or newer understand
+   ``set_nwk_info_v2``.
 5. ``restart_system``. The camera stores the network but stays on its own
    hotspot until this; the link usually drops before it answers.
 """
@@ -20,9 +25,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, AsyncIterator
-from urllib.parse import quote, quote_plus
+from urllib.parse import quote
 
 import aiohttp
 from cryptography.hazmat.primitives import padding, serialization
@@ -31,8 +38,37 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 HOTSPOT_IPS = ("192.168.193.1", "192.168.0.254", "192.168.222.1")
 SSID_PREFIXES = ("KodakCam-", "Camera-")
+# Hotspot names the official app treats as "encrypted cameras". Anything else,
+# including a plain KodakCam-… name, gets the unencrypted Wi-Fi command.
+ENCRYPTED_HOTSPOT_PREFIXES = (
+    "Camera-VA",
+    "KodakCam-C",
+    "KodakCam-F",
+    "AlectoCam-C",
+    "AlectoCam-F",
+)
+# Cherish (005, 006, 014) and Frontier (010, 007, 008), and only from 03.03.18.
+_UTF8_SSID_MODELS = frozenset({"005", "006", "014", "010", "007", "008"})
+_UTF8_SSID_MIN_FW = "03.03.18"
 _IV = b"cinatic_2018".ljust(16, b"\0")
 _TIMEOUT = aiohttp.ClientTimeout(total=8)
+
+
+def _command_reply(body: str, cmd: str) -> str | None:
+    """The payload after ``cmd:``, if this body is a command reply."""
+    prefix = f"{cmd}:"
+    text = body.strip()
+    if text.startswith(prefix):
+        return text[len(prefix):].strip()
+    return None
+
+
+def _accepted_reply(body: str, cmd: str) -> bool:
+    """True when the camera's reply shows it accepted this command."""
+    reply = _command_reply(body, cmd)
+    if reply is None:
+        return body.strip() == "0"
+    return reply == "0"
 
 
 async def _send(
@@ -42,25 +78,46 @@ async def _send(
     params: str = "",
     timeout: aiohttp.ClientTimeout = _TIMEOUT,
 ) -> str:
-    """Send a setup-mode command, falling back to the older URL form."""
+    """Send a setup-mode command, falling back to the older URL form.
+
+    A connect failure or timeout is ``error: ...``. That is not evidence the
+    camera accepted the command: the same prefix is used when the socket never
+    opened. A ``0`` reply is kept even if the hotspot then drops, including
+    when closing the response raises or the fallback URL can no longer connect.
+    """
     last = ""
+    accepted = False
     for url in (
         f"http://{ip}/?req={cmd}{params}",
         f"http://{ip}/?action=command&command={cmd}{params}",
     ):
+        body = ""
         try:
             async with http.get(url, timeout=timeout) as resp:
-                last = (await resp.text(errors="replace")).strip()
+                body = (await resp.text(errors="replace")).strip()
         except (aiohttp.ClientError, TimeoutError) as err:
+            if _accepted_reply(body, cmd) or accepted:
+                return "0"
             last = f"error: {err}"
             continue
-        if last.startswith(f"{cmd}:"):
-            return last[len(cmd) + 1:].strip()
+        if _accepted_reply(body, cmd):
+            accepted = True
+        reply = _command_reply(body, cmd)
+        if reply is not None:
+            return reply
+        last = body
+    if _accepted_reply(last, cmd):
+        return "0"
     return last
 
 
 def _ok(result: str) -> bool:
     return result == "0"
+
+
+def _left_pairing(result: str) -> bool:
+    """No reply arrived. Not proof the camera accepted the command."""
+    return result.startswith("error:")
 
 
 def _is_udid(reply: str) -> bool:
@@ -84,22 +141,116 @@ def _rsa_hex(key: bytes, public_key_path: Path) -> str:
     return public_key.encrypt(key, rsa_padding.PKCS1v15()).hex()  # type: ignore[union-attr]
 
 
-def build_network_request(ssid: str, password: str, security: str) -> str:
-    """The Wi-Fi details string the camera expects (WPA or open networks)."""
+def _java_url_encode(value: str) -> str:
+    """``java.net.URLEncoder.encode`` (UTF-8): space is ``+``, ``.~-_`` stay."""
+    out = []
+    for byte in value.encode("utf-8"):
+        char = chr(byte)
+        if char.isalnum() or char in ".-*_":
+            out.append(char)
+        elif char == " ":
+            out.append("+")
+        else:
+            out.append(f"%{byte:02X}")
+    return "".join(out)
+
+
+def model_code(udid: str) -> str:
+    """Model id: characters 4-6 of the camera UDID, as the app reads them."""
+    return udid[3:6] if len(udid) >= 6 else ""
+
+
+def firmware_at_least(firmware: str, minimum: str) -> bool:
+    """The app's comparison: strip the dots and compare the numbers."""
+    try:
+        current = int(firmware.strip().split()[0].replace(".", ""))
+        floor = int(minimum.replace(".", ""))
+    except ValueError:
+        return False
+    return current >= floor
+
+
+def encrypted_hotspot(ssid: str) -> bool:
+    return any(ssid.startswith(prefix) for prefix in ENCRYPTED_HOTSPOT_PREFIXES)
+
+
+def wifi_command(hotspot_ssid: str, udid: str, firmware: str) -> tuple[str, bool, bool]:
+    """Return ``(command, encrypt, utf8)`` the official app would send.
+
+    ``encrypt`` means AES-CBC the URL-encoded details. ``utf8`` means the
+    SSID and password inside those details are base64 (``set_nwk_info_v2``).
+    """
+    if not encrypted_hotspot(hotspot_ssid):
+        return "setup_wireless_save", False, False
+    if model_code(udid) in _UTF8_SSID_MODELS and firmware_at_least(firmware, _UTF8_SSID_MIN_FW):
+        return "set_nwk_info_v2", True, True
+    return "set_nwk_info", True, False
+
+
+def current_hotspot_ssid() -> str:
+    """The Wi-Fi this PC is joined to, or "" if it can't be read."""
+    try:
+        if sys.platform == "win32":
+            shown = subprocess.run(
+                ["netsh", "wlan", "show", "interfaces"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=5, check=False,
+            ).stdout
+            connected = False
+            for line in shown.splitlines():
+                key, sep, value = line.partition(":")
+                if not sep:
+                    continue
+                key, value = key.strip().lower(), value.strip()
+                if key == "state":
+                    connected = value.lower() == "connected"
+                elif key == "ssid" and connected and value:
+                    return value
+            return ""
+        for argv in (["iwgetid", "-r"], ["nmcli", "-t", "-f", "active,ssid", "dev", "wifi"]):
+            try:
+                shown = subprocess.run(
+                    argv, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=5, check=False,
+                ).stdout
+            except FileNotFoundError:
+                continue
+            if argv[0] == "iwgetid":
+                return shown.strip()
+            for line in shown.splitlines():
+                active, sep, name = line.partition(":")
+                if sep and active == "yes" and name:
+                    return name
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return ""
+
+
+def build_network_request(ssid: str, password: str, security: str, *, utf8: bool = False) -> str:
+    """The Wi-Fi details string the camera expects (WPA or open networks).
+
+    Already URL-encoded, matching ``CamConfiguration.build_setup_request``.
+    ``utf8`` is the base64 form used only by ``set_nwk_info_v2``.
+    """
     if security.upper() == "OPEN":
         mode, key_index, password = "0", "0", ""
     else:
         mode, key_index = "2", "0"
-    b64_ssid = base64.b64encode(ssid.encode()).decode()
-    b64_pass = base64.b64encode(password.encode()).decode()
+    if utf8:
+        ssid_field = base64.b64encode(ssid.encode()).decode()
+        pass_field = base64.b64encode(password.encode()).decode()
+        ssid_len, pass_len = len(ssid_field), len(pass_field)
+    else:
+        ssid_field, pass_field = ssid, password
+        ssid_len, pass_len = len(ssid.encode()), len(password)
     core = (
         "1" + "00" + mode + key_index + "0"
-        + f"{len(b64_ssid):03d}" + f"{len(b64_pass):02d}"
+        + f"{ssid_len:03d}" + f"{pass_len:02d}"
         + "00" + "00" + "00" + "0"
         + "00" + "00"
-        + b64_ssid + b64_pass
+        + ssid_field + pass_field
     )
-    return quote_plus(core)
+    return _java_url_encode(core)
 
 
 def timezone_offset(minutes: int) -> str:
@@ -138,6 +289,7 @@ async def run_setup(
     timezone_name: str,
     utc_offset_minutes: int,
     flicker: int,
+    hotspot_ssid: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     """Run the pairing steps, yielding a progress record for each."""
     if not public_key.is_file():
@@ -155,6 +307,16 @@ async def run_setup(
     yield {"step": "Contact camera", "ok": _is_udid(udid), "detail": udid}
     if not _is_udid(udid):
         return
+    firmware = await _send(http, ip, "get_version")
+    hotspot = hotspot_ssid or current_hotspot_ssid()
+    if not hotspot:
+        yield {
+            "step": "Camera hotspot",
+            "ok": False,
+            "detail": "couldn't read the KodakCam-… name this PC is joined to",
+        }
+        return
+    command, encrypt, utf8 = wifi_command(hotspot, udid, firmware)
 
     result = await _send(http, ip, "set_flicker", f"&value={flicker}")
     yield {"step": "Set mains frequency", "ok": _ok(result), "detail": result}
@@ -166,10 +328,17 @@ async def run_setup(
         return
 
     offset = timezone_offset(utc_offset_minutes)
-    result = await _send(
-        http, ip, "set_server_auth", f"&value=local&timezone={quote(offset)}"
-    )
     # The cloud token is meaningless now; only the timezone part matters.
+    # Encrypted hotspots expect that token AES-wrapped as set_reg_token.
+    if encrypt:
+        result = await _send(
+            http, ip, "set_reg_token",
+            f"&value={_aes_hex(secret, 'local')}&timezone={quote(offset)}",
+        )
+    else:
+        result = await _send(
+            http, ip, "set_server_auth", f"&value=local&timezone={quote(offset)}"
+        )
     yield {"step": "Set UTC offset", "ok": _ok(result), "detail": result, "optional": True}
 
     result = await _send(
@@ -177,24 +346,38 @@ async def run_setup(
     )
     yield {"step": "Set timezone", "ok": _ok(result), "detail": result, "optional": True}
 
-    payload = _aes_hex(secret, build_network_request(ssid, password, security))
-    for attempt in range(3):
-        result = await _send(http, ip, "set_nwk_info_v2", f"&setup={payload}")
+    encoded = build_network_request(ssid, password, security, utf8=utf8)
+    payload = _aes_hex(secret, encoded) if encrypt else encoded
+    timeout = aiohttp.ClientTimeout(total=10 if encrypt else 5)
+    # error: is a connect failure or timeout, including before the details were
+    # delivered. Keep retrying those. A dropped link is completion only once a
+    # reply shows the camera accepted the details.
+    accepted = False
+    for attempt in range(10):
+        result = await _send(http, ip, command, f"&setup={payload}", timeout=timeout)
         if _ok(result):
+            accepted = True
             break
-    yield {"step": "Send Wi-Fi details", "ok": _ok(result), "detail": result}
-    if not _ok(result):
+        await asyncio.sleep(2)
+    chosen = f"{command} (hotspot {hotspot}, model {model_code(udid) or '?'})"
+    yield {
+        "step": "Send Wi-Fi details",
+        "ok": accepted,
+        "detail": chosen if accepted else f"{chosen}: {result}",
+        "finished": False,
+    }
+    if not accepted:
         return
 
-    # Pairing mode does not end when the network is stored. The official app
-    # sends restart_system next; the camera usually drops the hotspot before
-    # the reply arrives, which is the reboot, not a failure.
+    # The network is stored. restart_system is what makes it leave the hotspot;
+    # the reply often never arrives, and a missing reply is still a success.
+    # Joining the new network takes about a minute after this.
     result = await _send(
         http, ip, "restart_system", timeout=aiohttp.ClientTimeout(total=12)
     )
-    rebooting = _ok(result) or result.startswith("error:")
     yield {
         "step": "Restart camera",
-        "ok": rebooting,
-        "detail": "left pairing mode" if result.startswith("error:") else result,
+        "ok": _ok(result) or _left_pairing(result),
+        "detail": "left pairing mode" if _left_pairing(result) or _ok(result) else result,
+        "finished": _ok(result) or _left_pairing(result),
     }

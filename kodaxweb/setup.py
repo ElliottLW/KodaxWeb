@@ -57,6 +57,11 @@ async def _pair(args: argparse.Namespace) -> int:
             return 1
         print(f"Found camera {camera['mac']} (firmware {camera['firmware']}) at {camera['ip']}.\n")
 
+        hotspot = args.hotspot or setup_flow.current_hotspot_ssid()
+        if not hotspot:
+            hotspot = _ask("Camera hotspot name (the KodakCam-… network, not your home Wi-Fi)")
+        print(f"Camera hotspot: {hotspot}")
+
         ssid = args.ssid or _ask("Your Wi-Fi name (2.4 GHz)")
         security = "OPEN" if args.open else "WPA2"
         password = ""
@@ -81,6 +86,7 @@ async def _pair(args: argparse.Namespace) -> int:
             timezone_name=timezone,
             utc_offset_minutes=offset_minutes,
             flicker=args.flicker,
+            hotspot_ssid=hotspot,
         ):
             last = step
             if step["ok"]:
@@ -91,10 +97,11 @@ async def _pair(args: argparse.Namespace) -> int:
                 mark = f"FAILED ({step['detail']})"
             print(f"  {step['step']}: {mark}")
 
-    if last.get("ok") and last.get("step") == "Restart camera":
+    if last.get("finished"):
         print(
-            f"\nThe camera is restarting and joining '{ssid}' (about a minute)."
-            "\nReconnect this laptop to your home Wi-Fi, then add the camera on the server"
+            f"\nSetup finished. The camera is restarting onto '{ssid}'."
+            "\nLosing the KodakCam-... network is normal. Wait about a minute, reconnect"
+            "\nthis laptop to your home Wi-Fi, then add the camera on the server"
             f" (its MAC address is {camera['mac']}, which helps find it in your router)."
         )
         return 0
@@ -121,6 +128,10 @@ def main() -> None:
         help="the setup key (default: data/public.pem)",
     )
     parser.add_argument("--ip", help="camera address, if it isn't found automatically")
+    parser.add_argument(
+        "--hotspot",
+        help="the camera's KodakCam-… network name, if it can't be read automatically",
+    )
     parser.add_argument("-y", "--yes", action="store_true", help="don't ask for confirmation")
     args = parser.parse_args()
     try:

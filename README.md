@@ -89,7 +89,8 @@ On the laptop, with this repository and the requirements installed:
    creates a Wi-Fi network called `KodakCam-…`.
 2. Connect the laptop to that network.
 3. Run the setup command and answer its questions (your 2.4 GHz Wi-Fi name and
-   password, and time zone):
+   password, and time zone). It reads the `KodakCam-…` name and sends the same
+   Wi-Fi command the official app would for that hotspot and camera model:
 
    ```bash
    py -m kodaxweb.setup
@@ -99,9 +100,39 @@ On the laptop, with this repository and the requirements installed:
    a minute; find its IP in your router (the command prints its MAC address to
    help) and use **Add camera** in the web app.
 
+The official app can show "connected to your router" and then "setup failed".
+That second message is the camera failing to reach Kodak's servers, not a
+reset command. A new camera already has those addresses in firmware
+(`api-t01-r3.perimetersafe.com` and the matching MQTT, STUN and NTP hosts).
+They no longer resolve. The camera's own setup log then says
+`1_FailToConnServer`, and a few minutes later it leaves your Wi-Fi and goes
+back to pairing mode. Skipping `url_set` does not avoid that: the addresses
+are already stored. Cameras that finished this handshake while the service
+existed stay on the LAN anyway. If a new camera is still on your network
+after the app says setup failed, add it by IP straight away; it can stream
+locally until it gives up and drops off.
+
+Point `mqtt-t01-r1.perimetersafe.com`, `mqtt-t01-r2.perimetersafe.com`, and
+`mqtt-t01-r3.perimetersafe.com` at the machine running KodaxWeb (a UniFi
+local DNS record, Pi-hole, or AdGuard rewrite). Then start the app with
+`--cloud-sink`. That is the whole fix: do not install Mosquitto or another
+broker beside it. The app accepts TCP 8894 and resets the connection, which
+is what a stock MQTT broker does when the camera speaks TLS instead of
+MQTT. There is no forged PerimeterSafe certificate. It does not bring the
+Kodak cloud app back. Do not port-forward 8894.
+
+```bash
+py -m kodaxweb --cloud-sink
+```
+
+`--cloud-sink-host` defaults to `0.0.0.0` and `--cloud-sink-port` to `8894`.
+Leave the flag off on a laptop. Reboot the camera once so it drops a cached
+lookup. If the camera uses a public resolver (8.8.8.8) instead of your
+router, the local DNS record will not be seen.
+
 `py -m kodaxweb.setup --help` lists options for running it without questions
-(`--ssid`, `--password`, `--timezone`, `--yes`, and `--open` for a network
-with no password).
+(`--ssid`, `--password`, `--timezone`, `--yes`, `--hotspot` if the camera
+network name can't be read, and `--open` for a network with no password).
 
 If you run the web app on the same laptop, its **Set up new camera** page
 does the same thing in the browser.
@@ -117,6 +148,7 @@ kodaxweb/            the app
   setup.py           setup command: pair a new camera from a laptop
   setup_flow.py      the pairing steps, shared by the command and the web page
   ptz_limits.py      software end-stops for pan/tilt
+  cloud_sink.py      TCP accept for the dead cloud check (port 8894)
   static/            the web page
 data/                yours, git-ignored (created on first run)
   cameras.json       your cameras and saved settings (real IPs/MACs)

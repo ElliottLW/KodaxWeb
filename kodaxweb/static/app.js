@@ -53,6 +53,8 @@ async function selectCamera(id) {
   if (!state.current) return;
   $$("#camera-list button").forEach((b) => b.setAttribute("aria-current", b.dataset.id === id));
   $("#cam-name").textContent = state.current.name;
+  $("#rename-form").hidden = true;
+  $("#cam-name").hidden = $("#btn-rename").hidden = false;
   $("#cam-sub").textContent = `${state.current.ip} · ${state.current.mac}`;
   $("#setup-log").hidden = true;
   show("view-camera");
@@ -72,13 +74,28 @@ async function refreshStatus() {
   }
 }
 
+// Cameras that answered a calibration request with a refusal: the note stays
+// up (a toast alone disappears) until the camera reports itself calibrated.
+const calibrationRefused = new Map();
+const UNCALIBRATED_TEXT = "Not calibrated: the camera doesn't know where its limits are, so it can grind at the ends.";
+
+function showCalibrationRefused() {
+  const msg = calibrationRefused.get(state.current?.id);
+  $("#calibrate-note").hidden = !msg;
+  $("#calibrate-note").textContent = msg || "";
+  $("#ptz-uncal-text").textContent = msg
+    ? "This camera refused to calibrate. Pan and tilt still work within your soft limits."
+    : UNCALIBRATED_TEXT;
+  $("#btn-calibrate-pad").hidden = !!msg;
+}
+
 function renderStatus(s) {
-  const bat = s.battery;
+  const bat = s.battery;  // null when the camera doesn't report a level
   const sdOk = s.sd_card.capacity_mb > 0;
   $("#tiles").innerHTML = `
-    <div class="tile"><div class="label">Battery</div><div class="value">${bat}%</div>
+    <div class="tile"><div class="label">Battery</div><div class="value">${bat === null ? "—" : `${bat}%`}</div>
       <div class="sub">${s.charging ? "Charging" : "On battery"}</div>
-      <div class="bar ${bat < 20 ? "low" : ""}"><i style="width:${Math.max(0, bat)}%"></i></div></div>
+      <div class="bar ${bat !== null && bat <= 25 ? "low" : ""}"><i style="width:${bat ?? 0}%"></i></div></div>
     <div class="tile"><div class="label">Wi-Fi</div><div class="value">${s.wifi_strength}%</div>
       <div class="sub">${esc(s.ssid)}</div>
       <div class="bar ${s.wifi_strength < 30 ? "low" : ""}"><i style="width:${s.wifi_strength}%"></i></div></div>
@@ -104,6 +121,8 @@ function renderStatus(s) {
   $("#btn-ptz").hidden = !s.pan_tilt;
   $("#ptz-misc").hidden = !s.pan_tilt;
   $("#ptz-uncalibrated").hidden = !s.pan_tilt || s.pan_tilt_calibrated;
+  if (s.pan_tilt_calibrated) calibrationRefused.delete(state.current.id);
+  showCalibrationRefused();
   if (!s.pan_tilt) showPtz(false);
   $("#sd-info").textContent = sdOk ? "" : "No SD card detected; these settings only apply with a card inserted.";
   $("#wifi-info").innerHTML = `
@@ -112,8 +131,7 @@ function renderStatus(s) {
   $("#device-info").innerHTML = `
     <dt>MAC</dt><dd>${esc(s.mac)}</dd><dt>UDID</dt><dd>${esc(s.udid)}</dd>
     <dt>Firmware</dt><dd>${esc(Object.entries(s.versions).map(([k, v]) => `${k} ${v}`).join(", "))}</dd>
-    <dt>Hardware</dt><dd>hw ${esc(s.hardware_id)} · SoC ${esc(s.soc_version)}</dd>
-    <dt>Charging time</dt><dd>${s.charge_minutes} min</dd>`;
+    <dt>Hardware</dt><dd>hw ${esc(s.hardware_id)} · SoC ${esc(s.soc_version)}</dd>`;
 }
 
 // ── settings ───────────────────────────────────────────────────────────────
@@ -536,12 +554,19 @@ function bindPtz() {
   window.addEventListener("blur", release);
 
   const calibrate = async () => {
+    const cam = state.current;
     if (!confirm("Calibrate pan & tilt? The camera sweeps to each end to find its limits (you may hear it briefly at the ends), then returns to centre. Takes about a minute.")) return;
     try {
       await camAction({ action: "calibrate" });
       toast("Calibrating… this takes about a minute");
       setTimeout(refreshStatus, 60000);
-    } catch (err) { toast(err.message, true); }
+    } catch (err) {
+      if (err.message.includes("refused to calibrate")) {
+        calibrationRefused.set(cam.id, err.message);
+        if (state.current === cam) showCalibrationRefused();
+      }
+      toast(err.message, true);
+    }
   };
   $("#btn-calibrate").onclick = calibrate;
   $("#btn-calibrate-pad").onclick = calibrate;
@@ -565,11 +590,39 @@ function bindActions() {
   $("#btn-zones").onclick = openZones;
   $("#btn-refresh").onclick = refreshStatus;
 
-  $("#cam-name").onclick = async () => {
-    const name = prompt("Camera name", state.current.name);
-    if (!name) return;
-    await api(`/api/cameras/${state.current.id}`, { method: "PATCH", body: { name } });
-    loadCameras(state.current.id);
+  // Rename in place: the name lives in this app (the camera has no name of
+  // its own), and live view keeps running while you edit.
+  const showRename = (on) => {
+    $("#rename-form").hidden = !on;
+    $("#cam-name").hidden = on;
+    $("#btn-rename").hidden = on;
+    if (on) {
+      $("#rename-input").value = state.current.name;
+      $("#rename-input").select();
+      $("#rename-input").focus();
+    }
+  };
+  $("#cam-name").onclick = () => showRename(true);
+  $("#cam-name").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showRename(true); } };
+  $("#btn-rename").onclick = () => showRename(true);
+  $("#btn-rename-cancel").onclick = () => showRename(false);
+  $("#rename-input").onkeydown = (e) => { if (e.key === "Escape") showRename(false); };
+  $("#rename-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const cam = state.current;
+    const name = $("#rename-input").value.trim();
+    if (!name || name === cam.name) return showRename(false);
+    try {
+      const saved = await api(`/api/cameras/${cam.id}`, { method: "PATCH", body: { name } });
+      cam.name = saved.name;
+      const item = $(`#camera-list button[data-id="${cam.id}"] span`);
+      if (item) item.textContent = cam.name;
+      if (state.current === cam) $("#cam-name").textContent = cam.name;
+      showRename(false);
+      toast("Renamed");
+    } catch (err) {
+      toast(err.message, true);
+    }
   };
   $("#btn-remove").onclick = async () => {
     if (!confirm(`Remove ${state.current.name} from this app? The camera itself isn't changed.`)) return;
@@ -663,6 +716,8 @@ function bindSetup() {
     try {
       const { camera } = await api("/api/setup/find");
       found = camera;
+      const hotspot = document.querySelector("#setup-form [name=hotspot]");
+      if (camera && camera.hotspot && hotspot && !hotspot.value) hotspot.value = camera.hotspot;
       $("#find-result").innerHTML = camera
         ? `Found camera <b>${esc(camera.mac)}</b> (firmware ${esc(camera.firmware)}) at ${esc(camera.ip)}.`
         : "No camera found. Check this PC is connected to the KodakCam-… network.";
@@ -683,6 +738,7 @@ function bindSetup() {
       password: form.get("password"),
       security: form.get("security"),
       flicker: Number(form.get("flicker")),
+      hotspot_ssid: form.get("hotspot"),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       utc_offset_minutes: -new Date().getTimezoneOffset(),
     };
@@ -707,8 +763,8 @@ function bindSetup() {
     }
     const done = $("#setup-done");
     done.hidden = false;
-    done.innerHTML = last?.ok && last.step === "Send Wi-Fi details"
-      ? `The camera is joining <b>${esc(body.ssid)}</b>. Reconnect this PC to your home Wi-Fi, find the camera's new IP in your router, then use <b>Add camera</b>.`
+    done.innerHTML = last?.finished
+      ? `Setup finished. The camera is restarting onto <b>${esc(body.ssid)}</b>. Losing the KodakCam-… network is normal — wait about a minute, reconnect this PC to your home Wi-Fi, find the camera's new IP in your router, then use <b>Add camera</b>.`
       : "Setup didn't finish. Check the steps above, put the camera back in pairing mode and try again.";
   };
 }

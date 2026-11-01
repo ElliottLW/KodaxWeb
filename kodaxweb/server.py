@@ -17,6 +17,7 @@ from aiohttp import WSMsgType, web
 import aiohttp
 
 from . import DEFAULT_DATA_DIR, camera_api, setup_flow
+from .cloud_sink import CloudSink
 from .live import AUDIO_AVAILABLE, LiveHub
 from .ptz_limits import SoftLimits
 
@@ -149,7 +150,10 @@ async def update_camera(request: web.Request) -> web.Response:
     body = await request.json()
     cam = request.app["cameras"][cam_id]
     if "name" in body:
-        cam["name"] = str(body["name"])[:60]
+        name = str(body["name"]).strip()[:60]
+        if not name:
+            raise ValueError("name can't be empty")
+        cam["name"] = name
     if "ip" in body:
         cam["ip"] = str(body["ip"]).strip()
         request.app["hubs"].pop(cam_id, None)
@@ -272,6 +276,8 @@ async def action(request: web.Request) -> web.Response:
 @api_errors
 async def setup_find(request: web.Request) -> web.Response:
     found = await setup_flow.find_camera(request.app["http"])
+    if found is not None:
+        found = {**found, "hotspot": setup_flow.current_hotspot_ssid()}
     return web.json_response({"camera": found})
 
 
@@ -289,6 +295,7 @@ async def setup_run(request: web.Request) -> web.StreamResponse:
         timezone_name=str(body.get("timezone", "UTC")),
         utc_offset_minutes=int(body.get("utc_offset_minutes", 0)),
         flicker=int(body.get("flicker", 50)),
+        hotspot_ssid=str(body.get("hotspot_ssid") or ""),
     ):
         await resp.write((json.dumps(step) + "\n").encode())
     await resp.write_eof()
@@ -309,6 +316,9 @@ async def index(request: web.Request) -> web.Response:
 
 async def on_startup(app: web.Application) -> None:
     app["http"] = aiohttp.ClientSession()
+    sink: CloudSink | None = app.get("cloud_sink")
+    if sink is not None:
+        await sink.start()
 
 
 async def revalidate_static(request: web.Request, response: web.StreamResponse) -> None:
@@ -322,12 +332,19 @@ async def revalidate_static(request: web.Request, response: web.StreamResponse) 
 
 
 async def on_cleanup(app: web.Application) -> None:
+    sink: CloudSink | None = app.get("cloud_sink")
+    if sink is not None:
+        await sink.close()
     await app["http"].close()
 
 
-def make_app(data_dir: Path = DEFAULT_DATA_DIR) -> web.Application:
+def make_app(
+    data_dir: Path = DEFAULT_DATA_DIR,
+    cloud_sink: CloudSink | None = None,
+) -> web.Application:
     app = web.Application()
     app["data_dir"] = data_dir
+    app["cloud_sink"] = cloud_sink
     app["cameras"] = load_cameras(data_dir)
     app["hubs"] = {}
     app.on_startup.append(on_startup)
@@ -359,7 +376,14 @@ def main() -> None:
         "--data-dir", type=Path, default=DEFAULT_DATA_DIR,
         help="folder for cameras.json and public.pem (default: data/ next to the code)",
     )
+    parser.add_argument(
+        "--cloud-sink", action="store_true",
+        help="accept camera cloud-check TCP (mqtt-t01-r*.perimetersafe.com) so a camera stops resetting",
+    )
+    parser.add_argument("--cloud-sink-host", default="0.0.0.0")
+    parser.add_argument("--cloud-sink-port", type=int, default=8894)
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
-    web.run_app(make_app(args.data_dir.resolve()), host=args.host, port=args.port)
+    sink = CloudSink(args.cloud_sink_host, args.cloud_sink_port) if args.cloud_sink else None
+    web.run_app(make_app(args.data_dir.resolve(), cloud_sink=sink), host=args.host, port=args.port)

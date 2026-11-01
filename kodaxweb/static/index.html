@@ -27,10 +27,16 @@
     <section id="view-camera" class="view" hidden>
       <header class="cam-header">
         <div>
-          <h1 id="cam-name" class="editable" title="Click to rename" tabindex="0"></h1>
+          <h1 id="cam-name" class="editable" title="Click to rename" tabindex="0" role="button"></h1>
+          <form id="rename-form" class="rename-form" hidden>
+            <input id="rename-input" maxlength="60" aria-label="Camera name" autocomplete="off" required>
+            <button class="btn primary" type="submit">Save</button>
+            <button class="btn ghost" type="button" id="btn-rename-cancel">Cancel</button>
+          </form>
           <div class="muted" id="cam-sub"></div>
         </div>
         <div class="row">
+          <button class="btn" id="btn-rename">Rename</button>
           <button class="btn" id="btn-refresh">Refresh</button>
           <button class="btn ghost danger" id="btn-remove">Remove</button>
         </div>
@@ -55,7 +61,7 @@
               <button class="ptz-center" id="btn-ptz-close" aria-label="Hide pan and tilt controls" title="Hide controls">
                 <svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
               <div class="ptz-warning" id="ptz-uncalibrated" hidden>
-                Not calibrated: the camera doesn't know where its limits are, so it can grind at the ends.
+                <span id="ptz-uncal-text">Not calibrated: the camera doesn't know where its limits are, so it can grind at the ends.</span>
                 <button class="btn" id="btn-calibrate-pad">Calibrate now</button>
               </div>
             </div>
@@ -168,6 +174,7 @@
           <div id="ptz-misc" hidden>
             <button class="btn" id="btn-calibrate">Recalibrate pan &amp; tilt</button>
             <p class="muted small">Sweeps the full range and re-centres. Use if movement drifts.</p>
+            <p class="muted small" id="calibrate-note" hidden></p>
           </div>
         </div>
 
@@ -199,6 +206,7 @@
         <div class="card" id="setup-form-card" hidden>
           <h2>3. Your home Wi-Fi</h2>
           <form id="setup-form" class="stack">
+            <label class="field"><span>Camera hotspot (KodakCam-…)</span><input name="hotspot" maxlength="32" autocomplete="off" placeholder="filled in if this PC can see it"></label>
             <label class="field"><span>Network name (SSID, 2.4 GHz)</span><input name="ssid" required maxlength="32" autocomplete="off"></label>
             <label class="field"><span>Security</span>
               <select name="security"><option value="WPA2">WPA/WPA2</option><option value="OPEN">Open (no password)</option></select></label>

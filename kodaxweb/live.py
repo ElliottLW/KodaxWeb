@@ -24,6 +24,14 @@ AUDIO_AVAILABLE = av is not None
 _LOGGER = logging.getLogger("kodaxweb")
 
 
+# Some cameras answer -2 to motor_calibration and never start (others of the
+# same model calibrate fine), so say so instead of a bare error code.
+CALIBRATION_REFUSED = (
+    "This camera refused to calibrate (it answered -2). Other cameras of the same "
+    "model do calibrate, so it may depend on this camera's firmware or state. "
+    "Pan and tilt still work, and your soft limits still protect the motor."
+)
+
 DEADMAN_S = 0.9   # stop the motor if a held direction isn't repeated in time
 MAX_HOLD_S = 3.0  # longest single continuous move
 MIN_TRAVEL_S = 0.05  # closer than this to a soft limit counts as "at" it
@@ -181,6 +189,8 @@ class LiveHub:
         if reply is None:
             raise camera_api.CameraError(f"no reply to {req}")
         value = reply.split(":", 1)[-1].strip()
+        if req == "motor_calibration" and value == "-2":
+            raise camera_api.CameraError(CALIBRATION_REFUSED)
         if value != "0":
             raise camera_api.CameraError(f"camera rejected {req} ({value})")
         return reply
