@@ -318,19 +318,16 @@ async def run_setup(
     timeout = aiohttp.ClientTimeout(total=10 if encrypt else 5)
     for attempt in range(10):
         result = await _send(http, ip, command, f"&setup={payload}", timeout=timeout)
-        if _ok(result) or _left_pairing(result):
+        if _ok(result):
             break
         await asyncio.sleep(2)
     stored = _ok(result)
-    left = _left_pairing(result)
-    # A dropped link here means the camera already started leaving pairing mode.
-    # An explicit non-zero reply, while it is still answering, is a real rejection.
     chosen = f"{command} (hotspot {hotspot}, model {model_code(udid) or '?'})"
     yield {
         "step": "Send Wi-Fi details",
-        "ok": stored or left,
-        "detail": f"{chosen}; left pairing mode" if left else chosen if stored else f"{chosen}: {result}",
-        "finished": left,
+        "ok": stored,
+        "detail": chosen if stored else f"{chosen}: {result}",
+        "finished": False,
     }
     if not stored:
         return
