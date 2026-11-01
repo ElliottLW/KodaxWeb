@@ -118,10 +118,9 @@ local DNS record, Pi-hole, or AdGuard rewrite). Then start the app with
 `--cloud-sink`. Do not install Mosquitto beside it. The app accepts TCP
 8894 and completes TLS with a certificate it generates in the data
 directory (`cloud-sink.pem` / `cloud-sink.key`). That certificate is ours,
-not PerimeterSafe's. Both files stay in the git-ignored data directory.
-The `.pem` is not a secret. Never publish `cloud-sink.key`: anyone with
-that key can impersonate this sink to a camera that already accepted the
-certificate. Older firmware clicks on a rejected handshake; if it pins
+not PerimeterSafe's. The public certificate is
+[`docs/cloud-sink.pem`](docs/cloud-sink.pem). The private key stays in
+the git-ignored data directory and is not in this repository. Older firmware clicks on a rejected handshake; if it pins
 Kodak's certificate, this still fails. It does not bring the Kodak cloud
 app back. Do not port-forward 8894.
 
