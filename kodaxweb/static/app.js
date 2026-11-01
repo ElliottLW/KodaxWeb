@@ -74,6 +74,21 @@ async function refreshStatus() {
   }
 }
 
+// Cameras that answered a calibration request with a refusal: the note stays
+// up (a toast alone disappears) until the camera reports itself calibrated.
+const calibrationRefused = new Map();
+const UNCALIBRATED_TEXT = "Not calibrated: the camera doesn't know where its limits are, so it can grind at the ends.";
+
+function showCalibrationRefused() {
+  const msg = calibrationRefused.get(state.current?.id);
+  $("#calibrate-note").hidden = !msg;
+  $("#calibrate-note").textContent = msg || "";
+  $("#ptz-uncal-text").textContent = msg
+    ? "This camera refused to calibrate. Pan and tilt still work within your soft limits."
+    : UNCALIBRATED_TEXT;
+  $("#btn-calibrate-pad").hidden = !!msg;
+}
+
 function renderStatus(s) {
   const bat = s.battery;  // null when the camera doesn't report a level
   const sdOk = s.sd_card.capacity_mb > 0;
@@ -106,6 +121,8 @@ function renderStatus(s) {
   $("#btn-ptz").hidden = !s.pan_tilt;
   $("#ptz-misc").hidden = !s.pan_tilt;
   $("#ptz-uncalibrated").hidden = !s.pan_tilt || s.pan_tilt_calibrated;
+  if (s.pan_tilt_calibrated) calibrationRefused.delete(state.current.id);
+  showCalibrationRefused();
   if (!s.pan_tilt) showPtz(false);
   $("#sd-info").textContent = sdOk ? "" : "No SD card detected; these settings only apply with a card inserted.";
   $("#wifi-info").innerHTML = `
@@ -537,12 +554,19 @@ function bindPtz() {
   window.addEventListener("blur", release);
 
   const calibrate = async () => {
+    const cam = state.current;
     if (!confirm("Calibrate pan & tilt? The camera sweeps to each end to find its limits (you may hear it briefly at the ends), then returns to centre. Takes about a minute.")) return;
     try {
       await camAction({ action: "calibrate" });
       toast("Calibrating… this takes about a minute");
       setTimeout(refreshStatus, 60000);
-    } catch (err) { toast(err.message, true); }
+    } catch (err) {
+      if (err.message.includes("refused to calibrate")) {
+        calibrationRefused.set(cam.id, err.message);
+        if (state.current === cam) showCalibrationRefused();
+      }
+      toast(err.message, true);
+    }
   };
   $("#btn-calibrate").onclick = calibrate;
   $("#btn-calibrate-pad").onclick = calibrate;
