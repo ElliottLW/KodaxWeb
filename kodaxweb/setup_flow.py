@@ -343,7 +343,7 @@ async def run_setup(
     )
     yield {
         "step": "Restart camera",
-        "ok": True,
+        "ok": _ok(result) or _left_pairing(result),
         "detail": "left pairing mode" if _left_pairing(result) or _ok(result) else result,
-        "finished": True,
+        "finished": _ok(result) or _left_pairing(result),
     }
