@@ -157,12 +157,12 @@
         <div class="card">
           <h2>Wi-Fi</h2>
           <dl class="kv" id="wifi-info"></dl>
-          <button class="btn" id="btn-wifi-change">Change network…</button>
+          <button class="btn" id="btn-wifi-change">Add backup network…</button>
           <form id="wifi-form" class="stack" hidden>
-            <label class="field"><span>New network name (SSID)</span><input name="ssid" required maxlength="32" autocomplete="off"></label>
+            <label class="field"><span>Backup network name (SSID)</span><input name="ssid" required maxlength="32" autocomplete="off"></label>
             <label class="field"><span>Password</span><input name="password" type="password" required minlength="8" maxlength="63" autocomplete="new-password"></label>
-            <p class="muted small">The camera drops off its current network straight away. If the details are wrong it won't come back and you'll need to set it up again from pairing mode.</p>
-            <div class="row"><button class="btn" type="button" id="btn-wifi-cancel">Cancel</button><button class="btn primary" type="submit">Move camera</button></div>
+            <p class="muted small">This saves a second network on the camera, as the official app's &ldquo;alternative network&rdquo; did. The camera stays on its current network and only tries the backup if that one isn't available. It cannot be used to move a working camera: for that, put it in pairing mode and run the setup command.</p>
+            <div class="row"><button class="btn" type="button" id="btn-wifi-cancel">Cancel</button><button class="btn primary" type="submit">Save backup network</button></div>
           </form>
         </div>
 

@@ -42,7 +42,7 @@ reverse proxy) when you run it on a home server.
 | Picture | Resolution, quality (bitrate), 50/60 Hz anti-flicker, image profile, ceiling-mount flip |
 | Detection & recording | Motion and sound on/off and sensitivity; paint motion zones over the live picture; save motion clips/snapshots to SD, keeping the latest N clips |
 | Lullaby | Tracks 1–5, stop, volume |
-| Wi-Fi | Move a working camera to another network |
+| Wi-Fi | Save a backup network (the camera only uses it if its main one is unavailable) |
 | Misc | Indicator light, time zone, pan/tilt recalibration |
 | Device | Device info, setup log, restart |
 | New camera | Pair a camera in hotspot mode with your Wi-Fi (untested end-to-end) |
@@ -63,7 +63,7 @@ smearing until the next full frame.
 
 Only needed for a camera that isn't on your Wi-Fi yet (new, or factory
 reset). Cameras already on your network can be added straight away by IP, and
-the app can move a working camera to another Wi-Fi network itself.
+the app can save a backup Wi-Fi network on a working camera. Moving a camera to a different main network means putting it back in pairing mode and running the setup command below.
 
 A camera in pairing mode only talks to devices on its own Wi-Fi network,
 which a server can't join. So pairing runs on a laptop with Wi-Fi, using the

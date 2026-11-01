@@ -642,13 +642,13 @@ function bindActions() {
     e.preventDefault();
     const form = new FormData(e.target);
     const ssid = form.get("ssid");
-    if (!confirm(`Move ${state.current.name} to "${ssid}"? It will disconnect from ${state.status?.ssid || "its current network"} immediately.`)) return;
+    if (!confirm(`Save "${ssid}" as a backup network for ${state.current.name}? It stays on ${state.status?.ssid || "its current network"} and only uses the backup if that one isn't available.`)) return;
     try {
       await api(`/api/cameras/${state.current.id}/wifi`, { method: "POST", body: { ssid, password: form.get("password") } });
-      toast("Wi-Fi details sent. The camera is reconnecting; update its IP here if it changes.");
+      toast("Backup network saved. The camera stays on its current network until that one is unavailable.");
       showWifiForm(false);
     } catch (err) {
-      toast(`Wi-Fi change failed: ${err.message}`, true);
+      toast(`Saving the backup network failed: ${err.message}`, true);
     }
   };
 

@@ -223,7 +223,11 @@ async def _apply_detection(
 async def change_wifi(
     http: aiohttp.ClientSession, ip: str, ssid: str, password: str
 ) -> None:
-    """Move an already-configured camera to another Wi-Fi network."""
+    """Save a backup ("alternative") Wi-Fi network on the camera.
+
+    The camera stays on its current network and only tries this one when that
+    is unavailable; it does not move a working camera.
+    """
     b64 = lambda s: quote(base64.b64encode(s.encode()).decode(), safe="")  # noqa: E731
     await set_command(http, ip, "change_router_info", f"&ssid={b64(ssid)}&password={b64(password)}")
 
