@@ -69,6 +69,19 @@ def _triplet(value: str | None) -> list[int]:
     return (parts + [0, 0, 0, 0])[:4]
 
 
+# The camera's `bat` isn't a percentage. It's a two-digit code: the units digit
+# is a 0-4 charge level (0/25/50/75/100 %) and a tens digit of 1 means plugged
+# in, so 14 is "full, charging" and 4 is "full, on battery".
+_BATTERY_LEVEL_PERCENT = {0: 0, 1: 25, 2: 50, 3: 75, 4: 100}
+
+
+def battery_percent(raw: int | None) -> int | None:
+    """Charge level in percent (steps of 25) from the camera's `bat` code."""
+    if raw is None or raw < 0:
+        return None
+    return _BATTERY_LEVEL_PERCENT[min(raw % 10, 4)]
+
+
 async def get_status(http: aiohttp.ClientSession, ip: str) -> dict[str, Any]:
     """Read everything the camera exposes and return a structured dict."""
     info = parse_kv(await command(http, ip, "get_caminfo"))
@@ -80,9 +93,8 @@ async def get_status(http: aiohttp.ClientSession, ip: str) -> dict[str, Any]:
     udid = await command(http, ip, "get_udid")
     return {
         "pan_tilt": model_from_udid(udid) in PAN_TILT_MODELS,
-        "battery": _int(info.get("bat")),
+        "battery": battery_percent(_int(info.get("bat"), -1)),
         "charging": info.get("charge") == "1",
-        "charge_minutes": _int(info.get("charge_dur")),
         "wifi_strength": _int(info.get("wifi")),
         "ssid": info.get("ssid1", ""),
         "local_ip": info.get("localip", ip),

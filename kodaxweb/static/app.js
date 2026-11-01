@@ -75,12 +75,12 @@ async function refreshStatus() {
 }
 
 function renderStatus(s) {
-  const bat = s.battery;
+  const bat = s.battery;  // null when the camera doesn't report a level
   const sdOk = s.sd_card.capacity_mb > 0;
   $("#tiles").innerHTML = `
-    <div class="tile"><div class="label">Battery</div><div class="value">${bat}%</div>
+    <div class="tile"><div class="label">Battery</div><div class="value">${bat === null ? "—" : `${bat}%`}</div>
       <div class="sub">${s.charging ? "Charging" : "On battery"}</div>
-      <div class="bar ${bat < 20 ? "low" : ""}"><i style="width:${Math.max(0, bat)}%"></i></div></div>
+      <div class="bar ${bat !== null && bat <= 25 ? "low" : ""}"><i style="width:${bat ?? 0}%"></i></div></div>
     <div class="tile"><div class="label">Wi-Fi</div><div class="value">${s.wifi_strength}%</div>
       <div class="sub">${esc(s.ssid)}</div>
       <div class="bar ${s.wifi_strength < 30 ? "low" : ""}"><i style="width:${s.wifi_strength}%"></i></div></div>
@@ -114,8 +114,7 @@ function renderStatus(s) {
   $("#device-info").innerHTML = `
     <dt>MAC</dt><dd>${esc(s.mac)}</dd><dt>UDID</dt><dd>${esc(s.udid)}</dd>
     <dt>Firmware</dt><dd>${esc(Object.entries(s.versions).map(([k, v]) => `${k} ${v}`).join(", "))}</dd>
-    <dt>Hardware</dt><dd>hw ${esc(s.hardware_id)} · SoC ${esc(s.soc_version)}</dd>
-    <dt>Charging time</dt><dd>${s.charge_minutes} min</dd>`;
+    <dt>Hardware</dt><dd>hw ${esc(s.hardware_id)} · SoC ${esc(s.soc_version)}</dd>`;
 }
 
 // ── settings ───────────────────────────────────────────────────────────────
