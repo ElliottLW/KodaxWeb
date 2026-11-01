@@ -115,9 +115,10 @@ locally until it gives up and drops off.
 Point `mqtt-t01-r1.perimetersafe.com`, `mqtt-t01-r2.perimetersafe.com`, and
 `mqtt-t01-r3.perimetersafe.com` at the machine running KodaxWeb (a UniFi
 local DNS record, Pi-hole, or AdGuard rewrite). Then start the app with
-`--cloud-sink`. It accepts TCP 8894 and nothing else: no MQTT broker, and
-no forged PerimeterSafe certificate. The camera's TLS handshake still
-fails, which is what stops the click/flash reset. It does not bring the
+`--cloud-sink`. That is the whole fix: do not install Mosquitto or another
+broker beside it. The app accepts TCP 8894 and resets the connection, which
+is what a stock MQTT broker does when the camera speaks TLS instead of
+MQTT. There is no forged PerimeterSafe certificate. It does not bring the
 Kodak cloud app back. Do not port-forward 8894.
 
 ```bash
